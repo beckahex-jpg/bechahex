@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { useToast } from './ToastContext';
 
 interface AuthContextType {
   user: User | null;
@@ -28,6 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMessage, setAuthMessage] = useState('');
   const [pendingAction, setPendingActionState] = useState<(() => void) | null>(null);
+  const { showSuccess } = useToast();
 
   const checkAdminStatus = async (userId: string) => {
     try {
@@ -192,6 +194,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     await supabase.auth.signOut();
     setPendingActionState(null);
+    showSuccess('You have been signed out successfully');
   };
 
   const openAuthModal = (message: string = 'Please sign in to continue') => {

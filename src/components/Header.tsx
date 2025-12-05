@@ -295,6 +295,7 @@ export default function Header({ onToggleFilters, showFiltersButton = false }: H
                             onClick={() => {
                               signOut();
                               setIsProfileDropdownOpen(false);
+                              navigate('/');
                             }}
                             className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-red-50 transition text-red-600"
                           >

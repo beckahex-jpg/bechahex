@@ -12,17 +12,17 @@ import { ToastProvider } from './contexts/ToastContext';
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <CookieConsentProvider>
-      <AuthProvider>
-        <NotificationProvider>
-          <ToastProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <NotificationProvider>
             <CartProvider>
               <FavoritesProvider>
                 <App />
               </FavoritesProvider>
             </CartProvider>
-          </ToastProvider>
-        </NotificationProvider>
-      </AuthProvider>
+          </NotificationProvider>
+        </AuthProvider>
+      </ToastProvider>
     </CookieConsentProvider>
   </StrictMode>
 );
