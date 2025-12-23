@@ -1,0 +1,6 @@
+{
+  "to": "galal.ahmed@ogr.sakarya.edu.tr",
+  "subject": "Hello - Test Email from Beckah",
+  "html": "<html><body style='font-family: Arial, sans-serif; padding: 20px;'><div style='max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 10px;'><h1 style='color: #2563eb;'>Hello! 👋</h1><p style='font-size: 16px; color: #333;'>This is a test email from your Beckah marketplace platform.</p><p style='font-size: 16px; color: #333;'>Your email notification system is working correctly!</p><div style='margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;'><p style='color: #666; font-size: 14px;'>Best regards,<br><strong>Beckah Team</strong></p></div></div></body></html>",
+  "emailType": "test"
+}

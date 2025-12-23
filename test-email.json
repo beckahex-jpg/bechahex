@@ -1,0 +1,6 @@
+{
+  "to": "galal.ahmed@ogr.sakarya.edu.tr",
+  "subject": "Hello - Test Email",
+  "html": "<html><body><h1>Hello!</h1><p>This is a test email from your Beckah marketplace.</p><p>Best regards, Beckah Team</p></body></html>",
+  "emailType": "test"
+}
