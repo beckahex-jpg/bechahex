@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Heart, ShoppingCart, Trash2 } from 'lucide-react';
+import { Gavel, Heart, ShoppingCart, Trash2 } from 'lucide-react';
 import { useFavorites } from '../contexts/FavoritesContext';
 import { useCart } from '../contexts/CartContext';
 import { supabase } from '../lib/supabase';
+import type { Auction } from '../types/auction';
 
 interface Product {
   id: string;
@@ -14,6 +15,8 @@ interface Product {
   images?: string[];
   condition: string;
   status: string;
+  listing_type?: 'fixed_price' | 'auction';
+  auctions?: Auction | Auction[] | null;
 }
 
 export default function FavoritesPage() {
@@ -38,7 +41,7 @@ export default function FavoritesPage() {
       setLoading(true);
       const { data, error } = await supabase
         .from('products')
-        .select('*')
+        .select('*, auctions(*)')
         .in('id', favorites)
         .eq('status', 'available');
 
@@ -90,7 +93,11 @@ export default function FavoritesPage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {products.map((product) => {
-              const priceNum = typeof product.price === 'string' ? parseFloat(product.price) : product.price;
+              const auction = Array.isArray(product.auctions) ? product.auctions[0] || null : product.auctions || null;
+              const isAuction = product.listing_type === 'auction' && Boolean(auction);
+              const priceNum = isAuction
+                ? Number(auction?.current_price ?? auction?.starting_price)
+                : typeof product.price === 'string' ? parseFloat(product.price) : product.price;
               const originalPriceNum = product.original_price
                 ? typeof product.original_price === 'string'
                   ? parseFloat(product.original_price)
@@ -128,7 +135,12 @@ export default function FavoritesPage() {
                       }}
                     />
 
-                    {discount > 0 && (
+                    {isAuction && (
+                      <div className="absolute top-3 left-3 flex items-center gap-1 rounded-full bg-[#062b1d] px-3 py-1 text-sm font-black text-lime-400 shadow-lg">
+                        <Gavel className="h-4 w-4" /> AUCTION
+                      </div>
+                    )}
+                    {discount > 0 && !isAuction && (
                       <div className="absolute top-3 left-3 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold shadow-lg">
                         -{discount}%
                       </div>
@@ -160,10 +172,15 @@ export default function FavoritesPage() {
                       </div>
 
                       <div className="flex items-center gap-2 mb-3">
+                        {isAuction && (
+                          <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500">
+                            {auction?.bid_count ? 'Current bid' : 'Starting price'}
+                          </span>
+                        )}
                         <span className="text-2xl font-bold text-gray-900">
                           ${priceNum.toFixed(2)}
                         </span>
-                        {originalPriceNum && (
+                        {originalPriceNum && !isAuction && (
                           <span className="text-sm text-gray-400 line-through">
                             ${originalPriceNum.toFixed(2)}
                           </span>
@@ -171,15 +188,25 @@ export default function FavoritesPage() {
                       </div>
                     </div>
 
-                    <button
-                      onClick={async () => {
-                        await addToCart(product.id);
-                      }}
-                      className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white py-3 rounded-lg font-medium transition shadow-md hover:shadow-lg flex items-center justify-center gap-2"
-                    >
-                      <ShoppingCart className="w-5 h-5" />
-                      Add to Cart
-                    </button>
+                    {isAuction ? (
+                      <button
+                        onClick={() => navigate(`/product/${product.id}`)}
+                        className="w-full bg-lime-400 hover:bg-lime-300 text-[#062b1d] py-3 rounded-lg font-bold transition shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+                      >
+                        <Gavel className="w-5 h-5" />
+                        View Auction & Bid
+                      </button>
+                    ) : (
+                      <button
+                        onClick={async () => {
+                          await addToCart(product.id);
+                        }}
+                        className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white py-3 rounded-lg font-medium transition shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+                      >
+                        <ShoppingCart className="w-5 h-5" />
+                        Add to Cart
+                      </button>
+                    )}
                   </div>
                 </div>
               );

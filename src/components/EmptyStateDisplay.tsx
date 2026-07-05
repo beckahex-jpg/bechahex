@@ -20,8 +20,8 @@ export default function EmptyStateDisplay({
     <div className="flex flex-col items-center justify-center py-16 px-4">
       <div className="relative mb-6">
         <div className="absolute inset-0 bg-gradient-to-br from-teal-400/20 to-emerald-400/20 rounded-full blur-2xl" />
-        <div className="relative bg-gradient-to-br from-teal-50 to-emerald-50 rounded-full p-6">
-          <Icon size={48} className="text-teal-600" />
+        <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-teal-50 to-emerald-50">
+          <Icon size={20} className="text-teal-600" />
         </div>
       </div>
       <h3 className="text-xl font-bold text-gray-900 mb-2">{title}</h3>

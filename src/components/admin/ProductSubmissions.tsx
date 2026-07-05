@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { CheckCircle, XCircle, Eye, AlertCircle, Clock, Search, User, Mail, Phone, MapPin, Calendar, Package, DollarSign, Upload, Trash2, Save } from 'lucide-react';
+import AuctionFields from '../auction/AuctionFields';
+import ListingTypeSelector from '../auction/ListingTypeSelector';
+import { auctionValuesAreValid, createDefaultAuctionValues, type ListingType } from '../../types/auctionForm';
 
 interface Submission {
   id: string;
@@ -19,6 +22,8 @@ interface Submission {
   user_id: string;
   category_id: string;
   product_id?: string | null;
+  listing_type?: ListingType;
+  auction_id?: string | null;
   ai_validation_status?: string | null;
   ai_suggested_price?: number | null;
   ai_validation_notes?: string | null;
@@ -42,7 +47,12 @@ interface ProductSubmissionsProps {
   searchQuery?: string;
 }
 
-export default function ProductSubmissions({ onSubmissionChange, searchQuery = '' }: ProductSubmissionsProps) {
+interface Category {
+  id: string;
+  name: string;
+}
+
+export default function ProductSubmissions({ onSubmissionChange, searchQuery: externalSearchQuery = '' }: ProductSubmissionsProps) {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
@@ -56,14 +66,21 @@ export default function ProductSubmissions({ onSubmissionChange, searchQuery = '
   const [editedCondition, setEditedCondition] = useState('');
   const [editedCategoryId, setEditedCategoryId] = useState('');
   const [editedImages, setEditedImages] = useState<string[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [newImageUrl, setNewImageUrl] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [publishListingType, setPublishListingType] = useState<ListingType>('fixed_price');
+  const [auction, setAuction] = useState(createDefaultAuctionValues);
+  const [searchQuery, setSearchQuery] = useState(externalSearchQuery);
 
   useEffect(() => {
     fetchSubmissions();
     fetchCategories();
   }, [filter]);
+
+  useEffect(() => {
+    setSearchQuery(externalSearchQuery);
+  }, [externalSearchQuery]);
 
   const fetchCategories = async () => {
     try {
@@ -137,6 +154,8 @@ export default function ProductSubmissions({ onSubmissionChange, searchQuery = '
     setEditedCondition(submission.condition);
     setEditedCategoryId(submission.category_id);
     setEditedImages([...submission.images]);
+    setPublishListingType(submission.listing_type || 'fixed_price');
+    setAuction({ ...createDefaultAuctionValues(), startingPrice: submission.price?.toString() || '' });
     setNewImageUrl('');
     setShowReviewModal(true);
   };
@@ -168,7 +187,7 @@ export default function ProductSubmissions({ onSubmissionChange, searchQuery = '
       const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
       const filePath = `products/${fileName}`;
 
-      const { data, error } = await supabase.storage
+      const { error } = await supabase.storage
         .from('product-images')
         .upload(filePath, file, {
           cacheControl: '3600',
@@ -192,35 +211,112 @@ export default function ProductSubmissions({ onSubmissionChange, searchQuery = '
   };
 
   const handleApprove = async () => {
-    if (!selectedSubmission || !finalPrice) return;
+    if (!selectedSubmission || (publishListingType === 'fixed_price' && !finalPrice)) return;
 
     try {
       setProcessing(true);
 
-      const productData = {
-        title: editedTitle,
-        description: editedDescription,
-        price: parseFloat(finalPrice),
-        original_price: selectedSubmission.original_price,
-        submission_type: selectedSubmission.submission_type,
-        category_id: editedCategoryId,
-        image_url: editedImages && editedImages.length > 0 ? editedImages[0] : '',
-        images: editedImages,
-        condition: editedCondition,
-        seller_id: selectedSubmission.user_id,
-        status: 'available'
-      };
+      if (publishListingType === 'auction') {
+        if (!auctionValuesAreValid(auction)) throw new Error('Complete all auction fields with valid values.');
+        if (editedImages.length === 0) throw new Error('Add at least one product image before publishing the auction.');
+        const { data, error: auctionError } = await supabase.functions.invoke('create-auction', {
+          body: {
+            sellerId: selectedSubmission.user_id,
+            title: editedTitle,
+            description: editedDescription,
+            categoryId: editedCategoryId || null,
+            condition: editedCondition,
+            publicImageUrls: editedImages,
+            startingPrice: Number(auction.startingPrice),
+            minimumBidIncrement: Number(auction.minimumBidIncrement),
+            shippingCost: Number(auction.shippingCost),
+            startsAt: new Date(auction.startsAt).toISOString(),
+            endsAt: new Date(auction.endsAt).toISOString(),
+            winnerPaymentWindowHours: Number(auction.winnerPaymentWindowHours),
+            submissionType: selectedSubmission.submission_type,
+            originalPrice: selectedSubmission.original_price,
+            sellerSymbolicPrice: selectedSubmission.seller_symbolic_price,
+          },
+        });
+        if (auctionError) throw auctionError;
+        if (data?.error) throw new Error(String(data.error));
+        if (!data?.moderation?.approved) throw new Error(String(data?.moderation?.reason || 'The auction did not pass AI safety review.'));
 
-      const { data: newProduct, error: productError } = await supabase
-        .from('products')
-        .insert(productData)
-        .select()
-        .single();
+        const { error: submissionUpdateError } = await supabase.from('product_submissions').update({
+          status: 'approved',
+          listing_type: 'auction',
+          auction_id: data.auctionId,
+          product_id: data.moderation.productId,
+          final_price: Number(auction.startingPrice),
+          title: editedTitle,
+          description: editedDescription,
+          condition: editedCondition,
+          category_id: editedCategoryId,
+          images: editedImages,
+        }).eq('id', selectedSubmission.id);
+        if (submissionUpdateError) throw submissionUpdateError;
 
-      if (productError) throw productError;
+        alert(`Auction "${editedTitle}" passed AI review and was published.`);
+        setShowReviewModal(false);
+        fetchSubmissions();
+        if (onSubmissionChange) onSubmissionChange();
+        window.dispatchEvent(new CustomEvent('products-updated'));
+        return;
+      }
 
-      if (!newProduct) {
-        throw new Error('Failed to create product - no data returned');
+      // A submission that already has a product_id is a seller revision of a
+      // published product: update the live row instead of creating a
+      // duplicate listing. Status/seller are intentionally left untouched so
+      // approving an edit never re-lists a sold product.
+      const isRevision = Boolean(selectedSubmission.product_id);
+      let productId = selectedSubmission.product_id;
+
+      if (isRevision) {
+        const { error: productError } = await supabase
+          .from('products')
+          .update({
+            title: editedTitle,
+            description: editedDescription,
+            price: parseFloat(finalPrice),
+            original_price: selectedSubmission.original_price,
+            category_id: editedCategoryId,
+            image_url: editedImages && editedImages.length > 0 ? editedImages[0] : '',
+            images: editedImages,
+            condition: editedCondition,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', selectedSubmission.product_id);
+
+        if (productError) throw productError;
+      } else {
+        const productData = {
+          title: editedTitle,
+          description: editedDescription,
+          price: parseFloat(finalPrice),
+          original_price: selectedSubmission.original_price,
+          submission_type: selectedSubmission.submission_type,
+          category_id: editedCategoryId,
+          image_url: editedImages && editedImages.length > 0 ? editedImages[0] : '',
+          images: editedImages,
+          condition: editedCondition,
+          seller_id: selectedSubmission.user_id,
+          status: 'available',
+          listing_type: 'fixed_price'
+        };
+
+        const { data: newProduct, error: productError } = await supabase
+          .from('products')
+          .insert(productData)
+          .select()
+          .single();
+
+        if (productError) throw productError;
+
+        if (!newProduct) {
+          throw new Error('Failed to create product - no data returned');
+        }
+
+        productId = newProduct.id;
       }
 
       const { error: updateError } = await supabase
@@ -233,7 +329,9 @@ export default function ProductSubmissions({ onSubmissionChange, searchQuery = '
           condition: editedCondition,
           category_id: editedCategoryId,
           images: editedImages,
-          product_id: newProduct.id
+          product_id: productId,
+          listing_type: 'fixed_price',
+          requires_manual_review: false
         })
         .eq('id', selectedSubmission.id);
 
@@ -242,7 +340,9 @@ export default function ProductSubmissions({ onSubmissionChange, searchQuery = '
       const priceChange = parseFloat(finalPrice) !== parseFloat(selectedSubmission.price.toString());
       const priceDiff = priceChange ? parseFloat(finalPrice) - parseFloat(selectedSubmission.price.toString()) : 0;
 
-      let notificationMessage = `Congratulations! Your product "${selectedSubmission.title}" has been approved and is now live on the marketplace.\n\n`;
+      let notificationMessage = isRevision
+        ? `Your update to "${selectedSubmission.title}" has been approved and is now live on the marketplace.\n\n`
+        : `Congratulations! Your product "${selectedSubmission.title}" has been approved and is now live on the marketplace.\n\n`;
       notificationMessage += `Final selling price: $${finalPrice}`;
 
       if (priceChange) {
@@ -260,7 +360,9 @@ export default function ProductSubmissions({ onSubmissionChange, searchQuery = '
 
       if (notificationError) console.error('Notification error:', notificationError);
 
-      alert(`✅ Product approved successfully!\n\nThe product "${selectedSubmission.title}" has been published at $${finalPrice} and the seller has been notified.`);
+      alert(isRevision
+        ? `✅ Product update approved!\n\nThe live listing "${selectedSubmission.title}" has been updated and the seller has been notified.`
+        : `✅ Product approved successfully!\n\nThe product "${selectedSubmission.title}" has been published at $${finalPrice} and the seller has been notified.`);
       setShowReviewModal(false);
       fetchSubmissions();
       if (onSubmissionChange) onSubmissionChange();
@@ -268,7 +370,7 @@ export default function ProductSubmissions({ onSubmissionChange, searchQuery = '
       window.dispatchEvent(new CustomEvent('products-updated'));
     } catch (error) {
       console.error('Error approving submission:', error);
-      alert('Failed to approve product. Please try again.');
+      alert(error instanceof Error ? error.message : 'Failed to approve product. Please try again.');
     } finally {
       setProcessing(false);
     }
@@ -322,7 +424,7 @@ export default function ProductSubmissions({ onSubmissionChange, searchQuery = '
     try {
       setProcessing(true);
 
-      const submissionUpdateData: any = {
+      const submissionUpdateData = {
         title: editedTitle,
         description: editedDescription,
         condition: editedCondition,
@@ -971,8 +1073,13 @@ export default function ProductSubmissions({ onSubmissionChange, searchQuery = '
                         <DollarSign className="w-5 h-5 text-emerald-600" />
                         Admin Decision
                       </h3>
+                      <div className="mb-5">
+                        <p className="mb-2 text-sm font-black uppercase tracking-wide text-[#0b2e20]">Publish as</p>
+                        <ListingTypeSelector value={publishListingType} onChange={setPublishListingType} />
+                        {publishListingType === 'auction' && <AuctionFields value={auction} onChange={setAuction} />}
+                      </div>
                       <div className="space-y-4">
-                        <div>
+                        {publishListingType === 'fixed_price' && <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-2">
                             Set Final Price ($) <span className="text-red-500">*</span>
                           </label>
@@ -999,7 +1106,7 @@ export default function ProductSubmissions({ onSubmissionChange, searchQuery = '
                               </span>
                             )}
                           </div>
-                        </div>
+                        </div>}
 
                         <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -1077,7 +1184,7 @@ export default function ProductSubmissions({ onSubmissionChange, searchQuery = '
                   </button>
                   <button
                     onClick={handleApprove}
-                    disabled={processing || !finalPrice || parseFloat(finalPrice) <= 0}
+                    disabled={processing || (publishListingType === 'fixed_price' ? (!finalPrice || parseFloat(finalPrice) <= 0) : (!auctionValuesAreValid(auction) || editedImages.length === 0))}
                     className="px-8 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-lg hover:from-emerald-700 hover:to-teal-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-semibold shadow-lg hover:shadow-xl"
                   >
                     <CheckCircle className="w-5 h-5" />

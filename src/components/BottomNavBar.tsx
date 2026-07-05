@@ -1,6 +1,5 @@
-import { Home, LayoutDashboard, Heart, ShoppingCart, User } from 'lucide-react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { Heart, Home, PlusCircle, Search, ShoppingCart } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useCart } from '../contexts/CartContext';
 import { useFavorites } from '../contexts/FavoritesContext';
 import { useAuthGuard } from '../hooks/useAuthGuard';
@@ -8,116 +7,31 @@ import { useAuthGuard } from '../hooks/useAuthGuard';
 export default function BottomNavBar() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuth();
   const { itemCount } = useCart();
   const { favorites } = useFavorites();
   const { protectedAction } = useAuthGuard();
 
-  const handleNavigation = (path: string, requiresAuth: boolean = false, message?: string) => {
-    if (requiresAuth && !user) {
-      protectedAction(() => navigate(path), message || 'Please sign in to continue');
-      return;
-    }
-    navigate(path);
-  };
-
-  const isActive = (path: string) => location.pathname === path;
-
-  const navItems = [
-    {
-      icon: Home,
-      label: 'Home',
-      path: '/',
-      requiresAuth: false,
-      badge: null,
-    },
-    {
-      icon: LayoutDashboard,
-      label: 'Dashboard',
-      path: '/dashboard',
-      requiresAuth: true,
-      badge: null,
-    },
-    {
-      icon: Heart,
-      label: 'Favorites',
-      path: '/favorites',
-      requiresAuth: true,
-      badge: favorites.length > 0 ? favorites.length : null,
-    },
-    {
-      icon: ShoppingCart,
-      label: 'Cart',
-      path: '/checkout',
-      requiresAuth: true,
-      badge: itemCount > 0 ? itemCount : null,
-    },
-    {
-      icon: User,
-      label: 'Account',
-      path: '/profile',
-      requiresAuth: true,
-      badge: null,
-    },
+  const items = [
+    { label: 'Home', icon: Home, active: location.pathname === '/', action: () => navigate('/') },
+    { label: 'Shop', icon: Search, active: location.pathname === '/products' || location.pathname.startsWith('/product/'), action: () => navigate('/products') },
+    { label: 'Sell', icon: PlusCircle, active: location.pathname === '/submit-product', action: () => protectedAction(() => navigate('/submit-product'), 'Please sign in to sell an item') },
+    { label: 'Watchlist', icon: Heart, active: location.pathname === '/favorites', badge: favorites.length, action: () => protectedAction(() => navigate('/favorites'), 'Please sign in to view your watchlist') },
+    { label: 'Cart', icon: ShoppingCart, active: location.pathname === '/checkout', badge: itemCount, action: () => window.dispatchEvent(new Event('open-market-cart')) },
   ];
 
-  const getAuthMessage = (path: string) => {
-    switch (path) {
-      case '/dashboard':
-        return 'Please sign in to view your dashboard';
-      case '/favorites':
-        return 'Please sign in to view your favorites';
-      case '/checkout':
-        return 'Please sign in to complete your purchase';
-      case '/profile':
-        return 'Please sign in to view your profile';
-      default:
-        return 'Please sign in to continue';
-    }
-  };
-
   return (
-    <>
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50">
-        <div className="flex items-center justify-around h-16 px-2">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const active = isActive(item.path);
-
-            return (
-              <button
-                key={item.path}
-                onClick={() => handleNavigation(item.path, item.requiresAuth, getAuthMessage(item.path))}
-                className="flex flex-col items-center justify-center flex-1 h-full relative group"
-              >
-                <div className="relative">
-                  <Icon
-                    className={`w-6 h-6 transition-colors ${
-                      active
-                        ? 'text-red-600'
-                        : 'text-gray-600 group-hover:text-red-500'
-                    }`}
-                  />
-                  {item.badge !== null && (
-                    <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center font-semibold px-1">
-                      {item.badge}
-                    </span>
-                  )}
-                </div>
-                <span
-                  className={`text-xs mt-1 transition-colors ${
-                    active
-                      ? 'text-red-600 font-semibold'
-                      : 'text-gray-600 group-hover:text-red-500'
-                  }`}
-                >
-                  {item.label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
-    </>
+    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white/95 shadow-[0_-6px_18px_rgba(0,0,0,0.08)] backdrop-blur lg:hidden" aria-label="Mobile navigation">
+      <div className="grid h-16 grid-cols-5 px-1 pb-[env(safe-area-inset-bottom)]">
+        {items.map(({ label, icon: Icon, active, badge, action }) => (
+          <button key={label} type="button" onClick={action} aria-current={active ? 'page' : undefined} className={`relative flex min-w-0 flex-col items-center justify-center gap-1 text-[10px] font-semibold transition ${active ? 'text-[#07513B]' : 'text-gray-600'}`}>
+            <span className="relative">
+              <Icon className={`h-5 w-5 ${label === 'Sell' ? 'h-6 w-6' : ''}`} strokeWidth={active ? 2.4 : 1.8} />
+              {Boolean(badge) && <span className="absolute -right-2.5 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white">{badge}</span>}
+            </span>
+            <span className="truncate">{label}</span>
+          </button>
+        ))}
+      </div>
+    </nav>
   );
 }

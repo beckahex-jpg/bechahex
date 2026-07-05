@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { DollarSign, CheckCircle, Clock, User, Package, Building2 } from 'lucide-react';
+import { DollarSign, CheckCircle, Clock, User, Package, Building2, Landmark, Wallet, AlertTriangle } from 'lucide-react';
 
 interface OrderWithSeller {
   id: string;
@@ -25,6 +25,15 @@ interface OrderWithSeller {
     full_name: string;
     email: string;
   } | null;
+}
+
+interface SellerPayoutDetails {
+  user_id: string;
+  method: 'bank_transfer' | 'paypal';
+  bank_name: string | null;
+  account_holder_name: string | null;
+  iban: string | null;
+  paypal_email: string | null;
 }
 
 const getPaymentTransferredEmailTemplate = (data: any) => {
@@ -122,6 +131,7 @@ export default function PaymentManagement() {
   const [updating, setUpdating] = useState<string | null>(null);
   const [commissionRate, setCommissionRate] = useState(10);
   const [transferNotes, setTransferNotes] = useState<Record<string, string>>({});
+  const [payoutDetailsMap, setPayoutDetailsMap] = useState<Record<string, SellerPayoutDetails>>({});
 
   useEffect(() => {
     loadOrders();
@@ -164,6 +174,20 @@ export default function PaymentManagement() {
 
       buyersMap = new Map((buyersRes.data || []).map(p => [p.id, p]));
       sellersMap = new Map((sellersRes.data || []).map(p => [p.id, p]));
+
+      // Admin RLS allows reading every seller's payout destination so the
+      // transfer can actually be performed.
+      if (sellerIds.length > 0) {
+        const { data: payoutRows } = await supabase
+          .from('seller_payout_details')
+          .select('user_id, method, bank_name, account_holder_name, iban, paypal_email')
+          .in('user_id', sellerIds);
+        const map: Record<string, SellerPayoutDetails> = {};
+        (payoutRows || []).forEach((row) => { map[row.user_id] = row as SellerPayoutDetails; });
+        setPayoutDetailsMap(map);
+      } else {
+        setPayoutDetailsMap({});
+      }
 
       const ordersWithProfiles = ordersData.map(order => ({
         ...order,
@@ -263,7 +287,9 @@ export default function PaymentManagement() {
           };
 
           const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-          const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+          const { data: sessionData } = await supabase.auth.getSession();
+          const accessToken = sessionData.session?.access_token;
+          if (!accessToken) throw new Error('Admin session is required to send payment email');
 
           const emailResponse = await fetch(
             `${supabaseUrl}/functions/v1/send-email`,
@@ -271,7 +297,7 @@ export default function PaymentManagement() {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${supabaseAnonKey}`,
+                'Authorization': `Bearer ${accessToken}`,
               },
               body: JSON.stringify({
                 to: order.profiles.email,
@@ -495,6 +521,46 @@ export default function PaymentManagement() {
                       <p className="text-xs text-blue-700 mb-3">
                         Toggle this switch after you have manually transferred ${sellerAmount.toFixed(2)} to the seller via bank transfer
                       </p>
+
+                      {order.seller_id && (
+                        payoutDetailsMap[order.seller_id] ? (
+                          <div className="bg-white rounded-lg p-3 border border-blue-200 mb-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              {payoutDetailsMap[order.seller_id].method === 'paypal'
+                                ? <Wallet className="w-4 h-4 text-blue-600" />
+                                : <Landmark className="w-4 h-4 text-blue-600" />}
+                              <p className="text-xs font-bold uppercase tracking-wide text-gray-700">
+                                Seller payout destination · {payoutDetailsMap[order.seller_id].method === 'paypal' ? 'PayPal' : 'Bank transfer'}
+                              </p>
+                            </div>
+                            {payoutDetailsMap[order.seller_id].method === 'paypal' ? (
+                              <p className="text-sm text-gray-900 font-mono">{payoutDetailsMap[order.seller_id].paypal_email}</p>
+                            ) : (
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+                                <div>
+                                  <p className="text-xs text-gray-500">Bank</p>
+                                  <p className="font-semibold text-gray-900">{payoutDetailsMap[order.seller_id].bank_name || '—'}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-gray-500">Account holder</p>
+                                  <p className="font-semibold text-gray-900">{payoutDetailsMap[order.seller_id].account_holder_name || '—'}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-gray-500">IBAN / Account</p>
+                                  <p className="font-mono text-gray-900 break-all">{payoutDetailsMap[order.seller_id].iban || '—'}</p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+                            <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+                            <p className="text-xs text-red-700 font-semibold">
+                              Seller has no payout details on file — ask them to add a bank account or PayPal in Settings before transferring.
+                            </p>
+                          </div>
+                        )
+                      )}
 
                       <div className="flex items-center justify-between bg-white rounded-lg p-3 border border-blue-200">
                         <div className="flex items-center gap-3">

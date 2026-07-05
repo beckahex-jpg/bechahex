@@ -2,6 +2,8 @@ import { Bell, Check, CheckCheck, Package, ShoppingBag, AlertCircle, Info, Dolla
 import { useNotifications } from '../contexts/NotificationContext';
 import { useNavigate } from 'react-router-dom';
 
+type NotificationItem = ReturnType<typeof useNotifications>['notifications'][number];
+
 export default function NotificationDropdown() {
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
   const navigate = useNavigate();
@@ -30,12 +32,22 @@ export default function NotificationDropdown() {
         return <CheckCircle className="w-5 h-5 text-green-600" />;
       case 'product_rejected':
         return <AlertCircle className="w-5 h-5 text-red-600" />;
+      case 'auction_outbid':
+      case 'auction_won':
+      case 'auction_second_chance':
+      case 'auction_published':
+      case 'auction_blocked':
+      case 'auction_cancelled':
+      case 'auction_lost':
+      case 'auction_payment_completed':
+      case 'auction_sold':
+        return <DollarSign className="w-5 h-5 text-emerald-600" />;
       default:
         return <Info className="w-5 h-5 text-gray-600" />;
     }
   };
 
-  const handleNotificationClick = (notification: any) => {
+  const handleNotificationClick = (notification: NotificationItem) => {
     markAsRead(notification.id);
 
     switch (notification.type) {
@@ -47,7 +59,7 @@ export default function NotificationDropdown() {
       case 'order_shipped':
       case 'order_update':
         if (notification.data?.order_id) {
-          navigate('/orders');
+          navigate(`/buyer-orders?order=${notification.data.order_id}`);
         }
         break;
       case 'submission_approved':
@@ -56,9 +68,34 @@ export default function NotificationDropdown() {
       case 'product_rejected':
         navigate('/dashboard');
         break;
+      case 'auction_outbid':
+        if (notification.data?.product_id) {
+          navigate(`/product/${notification.data.product_id}`);
+        } else {
+          navigate('/my-auctions');
+        }
+        break;
+      case 'auction_won':
+      case 'auction_second_chance':
+        if (notification.data?.winner_offer_id) navigate(`/auction-payment/${notification.data.winner_offer_id}`);
+        else navigate('/my-auctions');
+        break;
+      case 'auction_cancelled':
+      case 'auction_published':
+      case 'auction_blocked':
+      case 'auction_sold':
+        navigate('/my-auctions');
+        break;
+      case 'auction_lost':
+        if (notification.data?.product_id) navigate(`/product/${notification.data.product_id}`);
+        else navigate('/my-auctions');
+        break;
+      case 'auction_payment_completed':
+        navigate(notification.data?.order_id ? `/buyer-orders?order=${notification.data.order_id}` : '/my-auctions');
+        break;
       default:
         if (notification.data?.order_id) {
-          navigate('/orders');
+          navigate(`/buyer-orders?order=${notification.data.order_id}`);
         } else if (notification.data?.submission_id) {
           navigate('/dashboard');
         }

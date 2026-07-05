@@ -98,6 +98,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
 
     try {
+      const { data: product } = await supabase
+        .from('products')
+        .select('listing_type')
+        .eq('id', productId)
+        .maybeSingle();
+
+      if (product?.listing_type === 'auction') {
+        alert('Auction items cannot be added to the cart. Place a bid on the auction instead.');
+        return;
+      }
+
       const existingItem = items.find(item => item.product_id === productId);
 
       if (existingItem) {

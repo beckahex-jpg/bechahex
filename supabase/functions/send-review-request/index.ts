@@ -50,14 +50,14 @@ const getReviewRequestTemplate = (data: any) => {
           </div>
           <h3 style="text-align: center;">Rate Your Experience:</h3>
           <div style="text-align: center; font-size: 32px; margin: 20px 0;">
-            <a href="${data.siteUrl}/buyer-orders" style="text-decoration: none; margin: 0 5px;">⭐</a>
-            <a href="${data.siteUrl}/buyer-orders" style="text-decoration: none; margin: 0 5px;">⭐</a>
-            <a href="${data.siteUrl}/buyer-orders" style="text-decoration: none; margin: 0 5px;">⭐</a>
-            <a href="${data.siteUrl}/buyer-orders" style="text-decoration: none; margin: 0 5px;">⭐</a>
-            <a href="${data.siteUrl}/buyer-orders" style="text-decoration: none; margin: 0 5px;">⭐</a>
+            <a href="${data.siteUrl}/review/${data.orderId}?rating=1" style="text-decoration: none; margin: 0 5px;">⭐</a>
+            <a href="${data.siteUrl}/review/${data.orderId}?rating=2" style="text-decoration: none; margin: 0 5px;">⭐</a>
+            <a href="${data.siteUrl}/review/${data.orderId}?rating=3" style="text-decoration: none; margin: 0 5px;">⭐</a>
+            <a href="${data.siteUrl}/review/${data.orderId}?rating=4" style="text-decoration: none; margin: 0 5px;">⭐</a>
+            <a href="${data.siteUrl}/review/${data.orderId}?rating=5" style="text-decoration: none; margin: 0 5px;">⭐</a>
           </div>
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${data.siteUrl}/buyer-orders" class="button">Write a Review</a>
+            <a href="${data.siteUrl}/review/${data.orderId}" class="button">Write a Review</a>
           </div>
           <p>Your feedback helps other shoppers and supports our sellers. Thank you!</p>
         </div>
@@ -154,11 +154,11 @@ Deno.serve(async (req: Request) => {
     const { data: profile } = await supabase
       .from("profiles")
       .select("email_notifications_enabled, email_preferences")
-      .eq("id", order.buyer_id)
+      .eq("id", order.user_id)
       .maybeSingle();
 
     if (!profile?.email_notifications_enabled || profile?.email_preferences?.review_requests === false) {
-      console.log("Review request emails disabled for user", order.buyer_id);
+      console.log("Review request emails disabled for user", order.user_id);
       return new Response(
         JSON.stringify({ message: "Review request emails disabled" }),
         {
@@ -188,7 +188,7 @@ Deno.serve(async (req: Request) => {
         to: order.profiles.email,
         subject: "How was your recent purchase? ⭐",
         html: emailHtml,
-        userId: order.buyer_id,
+        userId: order.user_id,
         emailType: "review_request",
         metadata: { orderId: order.id, productId: product.id },
       }),
@@ -204,7 +204,7 @@ Deno.serve(async (req: Request) => {
 
     await supabase.from("review_requests").insert({
       order_id: orderId,
-      user_id: order.buyer_id,
+      user_id: order.user_id,
       product_id: productId,
       request_sent_at: new Date().toISOString(),
     });

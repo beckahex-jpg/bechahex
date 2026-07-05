@@ -3,10 +3,26 @@ import { Sparkles, Package } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import AISmartProductUpload from '../AISmartProductUpload';
+import AuctionFields from '../auction/AuctionFields';
+import ListingTypeSelector from '../auction/ListingTypeSelector';
+import { auctionValuesAreValid, createDefaultAuctionValues, type ListingType } from '../../types/auctionForm';
 
 interface Category {
   id: string;
   name: string;
+}
+
+interface AIProductData {
+  title: string;
+  description: string;
+  category_id?: string;
+  condition?: string;
+  price: string | number;
+  original_price?: string | number;
+  image_url?: string;
+  images?: Array<File | string>;
+  features?: string[];
+  tags?: string[];
 }
 
 export default function AddProduct() {
@@ -14,6 +30,8 @@ export default function AddProduct() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [showAIUpload, setShowAIUpload] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [listingType, setListingType] = useState<ListingType>('fixed_price');
+  const [auction, setAuction] = useState(createDefaultAuctionValues);
 
   useEffect(() => {
     loadCategories();
@@ -32,22 +50,71 @@ export default function AddProduct() {
     }
   };
 
-  const handleAIComplete = async (productData: any) => {
+  const handleAIComplete = async (productData: AIProductData) => {
     try {
       setSubmitting(true);
+
+      const files = (productData.images || []).filter((image: unknown): image is File => image instanceof File);
+      if (listingType === 'auction') {
+        if (!user || files.length === 0) throw new Error('An auction requires at least one product image.');
+        const reviewImagePaths: string[] = [];
+        for (const file of files) {
+          const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+          const path = `${user.id}/${crypto.randomUUID()}.${extension}`;
+          const { error: uploadError } = await supabase.storage.from('auction-review-images').upload(path, file, { contentType: file.type });
+          if (uploadError) throw uploadError;
+          reviewImagePaths.push(path);
+        }
+
+        const { data, error } = await supabase.functions.invoke('create-auction', {
+          body: {
+            title: productData.title,
+            description: productData.description,
+            categoryId: productData.category_id || null,
+            condition: productData.condition || 'Like New',
+            reviewImagePaths,
+            startingPrice: Number(auction.startingPrice),
+            minimumBidIncrement: Number(auction.minimumBidIncrement),
+            shippingCost: Number(auction.shippingCost),
+            startsAt: new Date(auction.startsAt).toISOString(),
+            endsAt: new Date(auction.endsAt).toISOString(),
+            winnerPaymentWindowHours: Number(auction.winnerPaymentWindowHours),
+            submissionType: 'public_sale',
+          },
+        });
+        if (error) throw error;
+        if (data?.error) throw new Error(String(data.error));
+        alert(data?.moderation?.status === 'blocked'
+          ? `Auction was not published: ${data.moderation.reason || 'AI safety review rejected the product.'}`
+          : data?.moderation?.approved
+            ? 'Auction published successfully.'
+            : 'The auction was saved, but AI review needs to be retried from Auction Management.');
+        setShowAIUpload(false);
+        window.dispatchEvent(new CustomEvent('products-updated'));
+        return;
+      }
+
+      const imageUrls: string[] = [];
+      for (const file of files) {
+        const path = `${user?.id || 'admin'}/${crypto.randomUUID()}.${file.name.split('.').pop() || 'jpg'}`;
+        const { error: uploadError } = await supabase.storage.from('product-images').upload(path, file, { contentType: file.type });
+        if (uploadError) throw uploadError;
+        imageUrls.push(supabase.storage.from('product-images').getPublicUrl(path).data.publicUrl);
+      }
 
       const { error } = await supabase
         .from('products')
         .insert({
           title: productData.title,
           description: productData.description,
-          price: parseFloat(productData.price),
-          original_price: productData.original_price ? parseFloat(productData.original_price) : null,
+          price: Number(productData.price),
+          original_price: productData.original_price ? Number(productData.original_price) : null,
           condition: productData.condition || 'Like New',
           category_id: productData.category_id,
-          image_url: productData.image_url,
-          images: productData.images || [productData.image_url],
+          image_url: imageUrls[0] || productData.image_url || '',
+          images: imageUrls.length ? imageUrls : (productData.images || (productData.image_url ? [productData.image_url] : [])),
           status: 'available',
+          listing_type: 'fixed_price',
           seller_id: user?.id,
           features: productData.features || [],
           tags: productData.tags || []
@@ -72,6 +139,12 @@ export default function AddProduct() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Add Product</h1>
         <p className="text-sm text-gray-500">Dashboard &gt; Ecommerce &gt; Add product</p>
+      </div>
+
+      <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <h2 className="mb-3 text-lg font-black text-[#0b2e20]">Choose how this product will be sold</h2>
+        <ListingTypeSelector value={listingType} onChange={setListingType} />
+        {listingType === 'auction' && <AuctionFields value={auction} onChange={setAuction} />}
       </div>
 
       <div className="bg-gradient-to-br from-emerald-50 to-blue-50 rounded-2xl border-2 border-emerald-200 p-8">
@@ -123,10 +196,11 @@ export default function AddProduct() {
 
           <button
             onClick={() => setShowAIUpload(true)}
-            className="px-8 py-4 bg-gradient-to-r from-emerald-600 to-blue-600 text-white rounded-xl font-semibold text-lg hover:from-emerald-700 hover:to-blue-700 transition shadow-lg hover:shadow-xl flex items-center gap-3 mx-auto"
+            disabled={submitting || (listingType === 'auction' && !auctionValuesAreValid(auction))}
+            className="px-8 py-4 bg-gradient-to-r from-emerald-600 to-blue-600 text-white rounded-xl font-semibold text-lg hover:from-emerald-700 hover:to-blue-700 transition shadow-lg hover:shadow-xl flex items-center gap-3 mx-auto disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Sparkles className="w-6 h-6" />
-            Start AI Product Upload
+            {submitting ? 'Publishing product...' : listingType === 'auction' && !auctionValuesAreValid(auction) ? 'Complete auction settings first' : 'Start AI Product Upload'}
           </button>
 
           <p className="text-xs text-gray-500 mt-4">

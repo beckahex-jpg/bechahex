@@ -1,8 +1,8 @@
-import ProductCard from './ProductCard';
-import { useProducts } from '../hooks/useProducts';
 import { Loader2 } from 'lucide-react';
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getProductAuction, useProducts } from '../hooks/useProducts';
+import ProductCard from './ProductCard';
 
 interface ProductGridProps {
   categoryId: string | null;
@@ -16,138 +16,91 @@ export default function ProductGrid({ categoryId, searchQuery = '', minPrice = '
   const navigate = useNavigate();
   const { products: allProducts, loading, error } = useProducts(categoryId || undefined);
 
-  const products = useMemo(() => {
-    let filtered = [...allProducts];
+  const { products, totalCount } = useMemo(() => {
+    let filtered = allProducts.filter((product) => (product.listing_type || 'fixed_price') !== 'auction');
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (product) =>
-          product.title.toLowerCase().includes(query) ||
-          product.description?.toLowerCase().includes(query) ||
-          product.condition.toLowerCase().includes(query)
+      filtered = filtered.filter((product) =>
+        product.title.toLowerCase().includes(query) ||
+        product.description?.toLowerCase().includes(query) ||
+        product.condition.toLowerCase().includes(query)
       );
     }
 
-    if (minPrice) {
-      const min = parseFloat(minPrice);
-      filtered = filtered.filter((product) => {
-        const price = typeof product.price === 'string' ? parseFloat(product.price) : product.price;
-        return price >= min;
-      });
-    }
+    if (minPrice) filtered = filtered.filter((product) => Number(product.price) >= Number(minPrice));
+    if (maxPrice) filtered = filtered.filter((product) => Number(product.price) <= Number(maxPrice));
 
-    if (maxPrice) {
-      const max = parseFloat(maxPrice);
-      filtered = filtered.filter((product) => {
-        const price = typeof product.price === 'string' ? parseFloat(product.price) : product.price;
-        return price <= max;
-      });
-    }
-
-    if (limitRows) {
-      const limit = limitRows * 4;
-      filtered = filtered.slice(0, limit);
-    }
-
-    return filtered;
+    const total = filtered.length;
+    if (limitRows) filtered = filtered.slice(0, limitRows * 5);
+    return { products: filtered, totalCount: total };
   }, [allProducts, searchQuery, minPrice, maxPrice, limitRows]);
 
   if (loading) {
     return (
-      <section className="py-16 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-          </div>
-        </div>
+      <section className="bg-gray-50 py-12">
+        <div className="market-container flex min-h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-[#07513B]" /></div>
       </section>
     );
   }
 
   if (error) {
     return (
-      <section className="py-16 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-            <p className="text-red-800 font-medium">Failed to load products</p>
-            <p className="text-red-600 text-sm mt-1">{error}</p>
-          </div>
-        </div>
-      </section>
-    );
-  }
-
-  if (products.length === 0) {
-    return (
-      <section className="py-16 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-white border border-gray-200 rounded-lg p-12 text-center">
-            <p className="text-gray-600 text-lg">No products available at the moment</p>
-            <p className="text-gray-500 text-sm mt-2">Check back soon for new items!</p>
-          </div>
-        </div>
+      <section className="bg-gray-50 py-12">
+        <div className="market-container"><div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center"><p className="font-bold text-red-800">We couldn't load these items.</p><p className="mt-1 text-sm text-red-600">{error}</p></div></div>
       </section>
     );
   }
 
   return (
-    <section className="py-16 bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between mb-10">
+    <section className="bg-gray-50 py-10 sm:py-12">
+      <div className="market-container">
+        <div className="mb-6 flex items-end justify-between gap-4">
           <div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">Featured Items</h2>
-            <p className="text-gray-600">Discover amazing deals on quality products</p>
+            <h2 className="text-2xl font-black tracking-tight text-gray-900 sm:text-3xl">Fresh finds</h2>
+            <p className="mt-1 text-sm text-gray-500">Newly listed items ready to shop</p>
           </div>
-          {limitRows && allProducts.length > limitRows * 4 && (
-            <button
-              onClick={() => navigate('/products')}
-              className="hidden sm:block text-blue-600 font-semibold hover:text-blue-700 transition"
-            >
-              View All →
-            </button>
-          )}
+          {limitRows && totalCount > products.length && <button type="button" onClick={() => navigate('/products')} className="hidden text-sm font-bold text-[#07513B] hover:underline sm:block">See all items</button>}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {products.map((product) => {
-            // Parse images if it's a string (shouldn't happen with Supabase but just in case)
-            let images = product.images;
-            if (typeof images === 'string') {
-              try {
-                images = JSON.parse(images);
-              } catch {
-                images = [];
+        {products.length === 0 ? (
+          <div className="rounded-2xl border border-gray-200 bg-white p-10 text-center">
+            <p className="font-semibold text-gray-800">No items match these filters.</p>
+            <button type="button" onClick={() => navigate('/products')} className="mt-4 rounded-full border border-gray-900 px-5 py-2 text-sm font-bold">Browse all items</button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {products.map((product) => {
+              let images = product.images;
+              if (typeof images === 'string') {
+                try { images = JSON.parse(images); } catch { images = []; }
               }
-            }
+              const image = Array.isArray(images) && images.length > 0 ? images[0] : product.image_url || '';
 
-            const imageUrl = images && Array.isArray(images) && images.length > 0
-              ? images[0]
-              : product.image_url || '';
+              return (
+                <ProductCard
+                  key={product.id}
+                  id={product.id}
+                  title={product.title}
+                  price={product.price}
+                  originalPrice={product.original_price || undefined}
+                  image={image}
+                  condition={product.condition}
+                  submissionType={product.submission_type}
+                  listingType={product.listing_type}
+                  auction={getProductAuction(product)}
+                  palette="home"
+                  ratingAvg={product.rating_avg}
+                  ratingCount={product.rating_count}
+                />
+              );
+            })}
+          </div>
+        )}
 
-            return (
-              <ProductCard
-                key={product.id}
-                id={product.id}
-                title={product.title}
-                price={product.price}
-                originalPrice={product.original_price || undefined}
-                image={imageUrl}
-                condition={product.condition}
-                submissionType={product.submission_type}
-              />
-            );
-          })}
-        </div>
-
-        {limitRows && allProducts.length > limitRows * 4 && (
-          <div className="text-center mt-12">
-            <button
-              onClick={() => navigate('/products')}
-              className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-8 py-4 rounded-lg font-semibold transition shadow-lg hover:shadow-xl"
-            >
-              View All Products
-            </button>
+        {limitRows && totalCount > products.length && (
+          <div className="mt-8 text-center sm:hidden">
+            <button type="button" onClick={() => navigate('/products')} className="rounded-full border border-gray-900 bg-white px-7 py-3 text-sm font-bold text-gray-900">See all items</button>
           </div>
         )}
       </div>

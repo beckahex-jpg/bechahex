@@ -20,7 +20,7 @@ Your email notification system is ready to go! You just need to add a few secret
 
    | Secret Name | Value |
    |-------------|-------|
-   | `RESEND_API_KEY` | `re_2chjjTmJ_EL69548uPL7a22tBHfpuYo9R` |
+   | `RESEND_API_KEY` | `your-resend-api-key` |
    | `FROM_EMAIL` | `info@beckahex.org` |
    | `SITE_URL` | `https://beckahex.org` |
 
@@ -84,7 +84,7 @@ These are **already available** (no need to add them):
 You can test the Resend API directly:
 ```bash
 curl -X POST 'https://api.resend.com/emails' \
-  -H 'Authorization: Bearer re_2chjjTmJ_EL69548uPL7a22tBHfpuYo9R' \
+  -H 'Authorization: Bearer YOUR_RESEND_API_KEY' \
   -H 'Content-Type: application/json' \
   -d '{
     "from": "info@beckahex.org",

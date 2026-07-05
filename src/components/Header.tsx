@@ -1,12 +1,30 @@
-import { ShoppingCart, User, Heart, Menu, LogOut, LayoutDashboard, Shield, ChevronDown, Search, SlidersHorizontal, Bell, Package, Settings, Tag, Home, Users, HandHeart } from 'lucide-react';
-import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import {
+  Bell,
+  ChevronDown,
+  Gavel,
+  Heart,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  Package,
+  Search,
+  Settings,
+  Shield,
+  ShoppingCart,
+  SlidersHorizontal,
+  Store,
+  Tag,
+  User,
+  X,
+} from 'lucide-react';
+import { FormEvent, useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
 import { useFavorites } from '../contexts/FavoritesContext';
 import { useNotifications } from '../contexts/NotificationContext';
-import { useFilters } from '../contexts/FilterContext';
 import { useAuthGuard } from '../hooks/useAuthGuard';
+import { useCategories } from '../hooks/useProducts';
 import { supabase } from '../lib/supabase';
 import AuthModal from './AuthModal';
 import CartDrawer from './CartDrawer';
@@ -17,445 +35,279 @@ interface HeaderProps {
   showFiltersButton?: boolean;
 }
 
+interface HeaderProfile {
+  full_name: string | null;
+  email: string | null;
+  role?: string | null;
+}
+
 export default function Header({ onToggleFilters, showFiltersButton = false }: HeaderProps) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isCartOpen, setIsCartOpen] = useState(false);
-  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
-  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  const [userProfile, setUserProfile] = useState<{ full_name: string; email: string; role?: string } | null>(null);
-  const [searchInput, setSearchInput] = useState('');
-  const [isSearchBarVisible, setIsSearchBarVisible] = useState(true);
-  const [lastScrollY, setLastScrollY] = useState(0);
-  const [scrollTimeout, setScrollTimeout] = useState<NodeJS.Timeout | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
   const { user, signOut, isAdmin, openAuthModal } = useAuth();
   const { protectedAction } = useAuthGuard();
-  const [localIsAdmin, setLocalIsAdmin] = useState(false);
   const { itemCount } = useCart();
   const { favorites } = useFavorites();
   const { unreadCount } = useNotifications();
-  const { triggerResetCategory } = useFilters();
-  const navigate = useNavigate();
-  const location = useLocation();
+  const { categories } = useCategories();
+
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isAccountOpen, setIsAccountOpen] = useState(false);
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [searchInput, setSearchInput] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [profile, setProfile] = useState<HeaderProfile | null>(null);
 
   useEffect(() => {
-    if (user) {
-      loadUserProfile();
+    const params = new URLSearchParams(location.search);
+    setSearchInput(params.get('search') || '');
+    setCategoryId(params.get('category') || '');
+    setIsMenuOpen(false);
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    const openCart = () => setIsCartOpen(true);
+    window.addEventListener('open-market-cart', openCart);
+    return () => window.removeEventListener('open-market-cart', openCart);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProfile() {
+      if (!user) {
+        setProfile(null);
+        return;
+      }
+
+      const { data } = await supabase
+        .from('profiles')
+        .select('full_name, email, role')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (!cancelled) setProfile((data as HeaderProfile | null) || null);
     }
+
+    void loadProfile();
+    return () => { cancelled = true; };
   }, [user]);
 
-  const loadUserProfile = async () => {
-    if (!user) return;
-
-    const { data } = await supabase
-      .from('profiles')
-      .select('full_name, email, role')
-      .eq('id', user.id)
-      .maybeSingle();
-
-    console.log('📋 Loaded user profile in Header:', data);
-
-    if (data) {
-      setUserProfile(data);
-      setLocalIsAdmin(data.role === 'admin');
-      console.log('🔑 Local admin status set to:', data.role === 'admin');
-    }
+  const submitSearch = (event: FormEvent) => {
+    event.preventDefault();
+    const params = new URLSearchParams();
+    if (searchInput.trim()) params.set('search', searchInput.trim());
+    if (categoryId) params.set('category', categoryId);
+    const query = params.toString();
+    navigate(query ? `/products?${query}` : '/products');
   };
 
-  const getInitial = () => {
-    if (userProfile?.full_name) {
-      return userProfile.full_name.charAt(0).toUpperCase();
-    }
-    if (userProfile?.email) {
-      return userProfile.email.charAt(0).toUpperCase();
-    }
-    if (user?.email) {
-      return user.email.charAt(0).toUpperCase();
-    }
-    return 'U';
+  const goToSell = () => {
+    protectedAction(() => navigate('/submit-product'), 'Please sign in to sell an item');
   };
 
-  useEffect(() => {
-    console.log('🎯 Header - isAdmin from context:', isAdmin, 'localIsAdmin:', localIsAdmin, 'user:', user?.email);
-  }, [isAdmin, localIsAdmin, user]);
-
-  useEffect(() => {
-    if (!showFiltersButton) return;
-
-    const HIDE_THRESHOLD = 50;
-    const THROTTLE_DELAY = 100;
-
-    const handleScroll = () => {
-      if (scrollTimeout) {
-        clearTimeout(scrollTimeout);
-      }
-
-      const timeout = setTimeout(() => {
-        const currentScrollY = window.scrollY;
-
-        if (currentScrollY <= 10) {
-          setIsSearchBarVisible(true);
-        } else if (currentScrollY > HIDE_THRESHOLD) {
-          setIsSearchBarVisible(false);
-        }
-
-        setLastScrollY(currentScrollY);
-      }, THROTTLE_DELAY);
-
-      setScrollTimeout(timeout);
-    };
-
-    window.addEventListener('scroll', handleScroll, { passive: true });
-
-    return () => {
-      window.removeEventListener('scroll', handleScroll);
-      if (scrollTimeout) {
-        clearTimeout(scrollTimeout);
-      }
-    };
-  }, [lastScrollY, showFiltersButton, scrollTimeout]);
-
-  const shouldShowAdminButton = isAdmin || localIsAdmin;
+  const initial = (profile?.full_name || profile?.email || user?.email || 'U').charAt(0).toUpperCase();
+  const displayName = profile?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || 'Account';
+  const canOpenAdmin = isAdmin || profile?.role === 'admin';
+  const quickCategories = categories.slice(0, 8);
 
   return (
-    <header className="bg-white shadow-sm sticky top-0 z-50">
-      <div className="border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            {/* Mobile Menu Button - Left */}
-            <button
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="lg:hidden p-2 rounded-md text-gray-600 hover:bg-gray-100"
-            >
-              <Menu className="w-6 h-6" />
-            </button>
-
-            {/* Logo - Center on mobile, Left on desktop */}
-            <div className="absolute left-1/2 -translate-x-1/2 lg:static lg:translate-x-0 flex items-center gap-8">
-              <div
-                onClick={() => {
-                  triggerResetCategory();
-                  navigate('/');
-                }}
-                className="flex flex-col leading-none cursor-pointer hover:opacity-80 transition"
-              >
-                <span className="text-xl font-bold text-black">BECKAH</span>
-                <span className="text-sm font-semibold" style={{ color: '#B8860B' }}>EXCHANGE</span>
-              </div>
-
-              <nav className="hidden lg:flex items-center gap-6">
-                <button
-                  onClick={() => {
-                    triggerResetCategory();
-                    navigate('/');
-                  }}
-                  className="text-sm font-medium text-gray-700 hover:text-emerald-700 transition flex items-center gap-1"
-                >
-                  <Home className="w-4 h-4" />
-                  Home
-                </button>
-                <button
-                  onClick={() => {
-                    protectedAction(() => {
-                      navigate('/submit-product');
-                    }, 'Please sign in to sell products');
-                  }}
-                  className="text-sm font-medium text-gray-700 hover:text-emerald-700 transition flex items-center gap-1"
-                >
-                  <Tag className="w-4 h-4" />
-                  Sell Items
-                </button>
-                <a href="https://www.beckah.org/programs" className="text-sm font-medium text-gray-700 hover:text-emerald-700 transition flex items-center gap-1">
-                  <Users className="w-4 h-4" />
-                  programs
-                </a>
-                <a href="https://www.beckah.org/community-services" className="text-sm font-medium text-gray-700 hover:text-emerald-700 transition flex items-center gap-1">
-                  <HandHeart className="w-4 h-4" />
-                  community services
-                </a>
-              </nav>
-            </div>
-
-            {/* Right side icons */}
-
-            <div className="flex items-center gap-3">
-              {user && (
-                <div className="relative">
-                  <button
-                    onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-                    className="relative p-2 text-gray-700 hover:text-blue-600 transition"
-                  >
-                    <Bell className="w-6 h-6" />
-                    {unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center font-semibold px-1">
-                        {unreadCount}
-                      </span>
-                    )}
-                  </button>
-
-                  {isNotificationOpen && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-30"
-                        onClick={() => setIsNotificationOpen(false)}
-                      />
-                      <div className="fixed top-20 left-4 right-4 sm:absolute sm:top-auto sm:left-auto sm:right-0 sm:mt-2 z-40">
-                        <NotificationDropdown />
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-
-              <button
-                onClick={() => {
-                  protectedAction(() => {
-                    navigate('/favorites');
-                  }, 'Please sign in to view your favorites');
-                }}
-                className="relative p-2 text-gray-700 hover:text-red-500 transition hidden lg:flex"
-              >
-                <Heart className="w-6 h-6" />
-                {favorites.length > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center font-semibold px-1">
-                    {favorites.length}
-                  </span>
-                )}
-              </button>
-
-              <button
-                onClick={() => setIsCartOpen(true)}
-                className="relative p-2 text-gray-700 hover:text-emerald-700 transition hidden lg:flex"
-              >
-                <ShoppingCart className="w-6 h-6" />
-                {itemCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-emerald-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
-                    {itemCount}
-                  </span>
-                )}
-              </button>
-
-              {user ? (
-                <div className="relative">
-                  <button
-                    onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
-                    className="flex items-center gap-1 group"
-                  >
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center text-white font-bold text-lg shadow-md hover:shadow-lg transition-shadow">
-                      {getInitial()}
-                    </div>
-                    <ChevronDown className={`w-4 h-4 text-gray-600 transition-transform ${isProfileDropdownOpen ? 'rotate-180' : ''}`} />
-                  </button>
-
-                  {isProfileDropdownOpen && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-30"
-                        onClick={() => setIsProfileDropdownOpen(false)}
-                      />
-                      <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-40">
-                        <div className="px-4 py-3 border-b border-gray-100">
-                          <p className="font-semibold text-gray-900">{userProfile?.full_name || 'User'}</p>
-                          <p className="text-sm text-gray-600">{userProfile?.email || user?.email}</p>
-                        </div>
-
-                        <div className="py-1">
-                          {shouldShowAdminButton && (
-                            <button
-                              onClick={() => {
-                                console.log('🚀 Navigating to admin dashboard');
-                                navigate('/admin');
-                                setIsProfileDropdownOpen(false);
-                              }}
-                              className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-gradient-to-r hover:from-emerald-50 hover:to-green-50 transition bg-gradient-to-r from-emerald-600 to-green-600"
-                            >
-                              <Shield className="w-5 h-5 text-white" />
-                              <span className="text-white font-semibold">Admin Dashboard</span>
-                            </button>
-                          )}
-
-                          <button
-                            onClick={() => {
-                              navigate('/profile');
-                              setIsProfileDropdownOpen(false);
-                            }}
-                            className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-gray-50 transition"
-                          >
-                            <User className="w-5 h-5 text-gray-600" />
-                            <span className="text-gray-700">Profile</span>
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              navigate('/buyer-orders');
-                              setIsProfileDropdownOpen(false);
-                            }}
-                            className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-gray-50 transition"
-                          >
-                            <Package className="w-5 h-5 text-gray-600" />
-                            <span className="text-gray-700">My Orders</span>
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              navigate('/seller-orders');
-                              setIsProfileDropdownOpen(false);
-                            }}
-                            className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-gray-50 transition"
-                          >
-                            <Tag className="w-5 h-5 text-gray-600" />
-                            <span className="text-gray-700">Seller Orders</span>
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              navigate('/dashboard');
-                              setIsProfileDropdownOpen(false);
-                            }}
-                            className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-gray-50 transition"
-                          >
-                            <LayoutDashboard className="w-5 h-5 text-gray-600" />
-                            <span className="text-gray-700">Dashboard</span>
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              navigate('/settings');
-                              setIsProfileDropdownOpen(false);
-                            }}
-                            className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-gray-50 transition"
-                          >
-                            <Settings className="w-5 h-5 text-gray-600" />
-                            <span className="text-gray-700">Settings</span>
-                          </button>
-                        </div>
-
-                        <div className="border-t border-gray-100 mt-1 pt-1">
-                          <button
-                            onClick={() => {
-                              signOut();
-                              setIsProfileDropdownOpen(false);
-                              navigate('/');
-                            }}
-                            className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-red-50 transition text-red-600"
-                          >
-                            <LogOut className="w-5 h-5" />
-                            <span>Sign Out</span>
-                          </button>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ) : (
-                <button
-                  onClick={() => openAuthModal()}
-                  className="flex items-center gap-2 text-sm text-gray-700 hover:text-emerald-700 transition"
-                >
-                  <User className="w-5 h-5" />
-                  <span className="hidden md:inline">Sign In</span>
-                </button>
-              )}
-            </div>
+    <header className="sticky top-0 z-50 border-b border-gray-200 bg-white shadow-sm">
+      <div className="hidden border-b border-gray-200 bg-gray-50 lg:block">
+        <div className="market-container flex h-8 items-center justify-between text-xs text-gray-700">
+          <div className="flex items-center gap-4">
+            {user ? (
+              <span>Hi, <strong>{displayName}</strong></span>
+            ) : (
+              <span>
+                Hi!{' '}
+                <button type="button" onClick={() => openAuthModal()} className="font-semibold text-[#07513B] underline-offset-2 hover:underline">Sign in</button>
+                {' '}or{' '}
+                <button type="button" onClick={() => openAuthModal()} className="font-semibold text-[#07513B] underline-offset-2 hover:underline">register</button>
+              </span>
+            )}
+            <a href="https://www.beckah.org/programs" className="hover:underline">Programs</a>
+            <a href="https://www.beckah.org/community-services" className="hover:underline">Community services</a>
           </div>
+          <nav className="flex items-center gap-5" aria-label="Utility navigation">
+            <button type="button" onClick={goToSell} className="font-semibold hover:text-[#07513B]">Sell</button>
+            <button type="button" onClick={() => protectedAction(() => navigate('/favorites'), 'Please sign in to view your watchlist')} className="hover:text-[#07513B]">Watchlist</button>
+            <button type="button" onClick={() => protectedAction(() => navigate('/buyer-orders'), 'Please sign in to view your purchases')} className="hover:text-[#07513B]">Purchases</button>
+          </nav>
         </div>
       </div>
 
-      {showFiltersButton && (
-        <div
-          className="bg-gradient-to-r from-gray-50 to-emerald-50 overflow-hidden transition-all duration-200 ease-in-out"
-          style={{
-            maxHeight: isSearchBarVisible ? '200px' : '0px',
-            opacity: isSearchBarVisible ? 1 : 0,
-            willChange: 'max-height, opacity'
-          }}
-        >
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <div className="flex items-center gap-3">
-              <div className="flex-1 relative">
-                <input
-                  type="text"
-                  placeholder="Search for sustainable products..."
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      navigate(`/?search=${encodeURIComponent(searchInput)}`);
-                    }
-                  }}
-                  className="w-full px-4 py-3 pr-12 rounded-lg border border-gray-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-200 outline-none transition"
-                />
-                <button
-                  onClick={() => {
-                    navigate(`/?search=${encodeURIComponent(searchInput)}`);
-                  }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-emerald-700 hover:bg-emerald-800 text-white p-2 rounded-md transition"
-                >
-                  <Search className="w-5 h-5" />
-                </button>
-              </div>
-              <button
-                onClick={onToggleFilters}
-                className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white px-6 py-3 rounded-lg font-medium transition shadow-md hover:shadow-lg whitespace-nowrap"
-              >
-                <SlidersHorizontal className="w-5 h-5" />
-                <span>Filters</span>
-              </button>
+      <div className="market-container">
+        <div className="flex h-14 items-center justify-between gap-2 lg:h-[72px] lg:gap-5">
+          <button
+            type="button"
+            onClick={() => setIsMenuOpen((open) => !open)}
+            aria-label={isMenuOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={isMenuOpen}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-700 hover:bg-gray-100 lg:hidden"
+          >
+            {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+
+          <button type="button" onClick={() => navigate('/')} className="shrink-0 text-left" aria-label="Beckah Exchange home">
+            <span className="block text-lg font-black leading-none tracking-tight text-black lg:text-xl">BECKAH</span>
+            <span className="mt-0.5 block text-[10px] font-bold leading-none text-[#B8860B] lg:text-xs">EXCHANGE</span>
+          </button>
+
+          <form onSubmit={submitSearch} className="hidden min-w-0 flex-1 items-stretch lg:flex" role="search">
+            <select
+              value={categoryId}
+              onChange={(event) => setCategoryId(event.target.value)}
+              aria-label="Search category"
+              className="max-w-44 rounded-l-full border-2 border-r border-gray-900 bg-white px-4 text-sm text-gray-700 outline-none focus:border-[#07513B]"
+            >
+              <option value="">All categories</option>
+              {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </select>
+            <div className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-500" />
+              <input
+                type="search"
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="Search for anything"
+                className="h-12 w-full border-y-2 border-gray-900 pl-12 pr-4 text-sm outline-none placeholder:text-gray-500 focus:border-[#07513B]"
+              />
             </div>
+            <button type="submit" className="min-w-28 rounded-r-full bg-[#07513B] px-7 text-sm font-bold text-white transition hover:bg-[#032F24]">Search</button>
+          </form>
+
+          <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+            {user && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsNotificationOpen((open) => !open)}
+                  aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
+                  aria-expanded={isNotificationOpen}
+                  className="relative flex h-10 w-9 items-center justify-center rounded-full text-gray-700 hover:bg-gray-100 sm:w-10"
+                >
+                  <Bell className="h-5 w-5" />
+                  {unreadCount > 0 && <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">{unreadCount}</span>}
+                </button>
+                {isNotificationOpen && (
+                  <>
+                    <button type="button" aria-label="Close notifications" className="fixed inset-0 z-30 cursor-default" onClick={() => setIsNotificationOpen(false)} />
+                    <div className="fixed left-3 right-3 top-16 z-40 sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-96"><NotificationDropdown /></div>
+                  </>
+                )}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => protectedAction(() => navigate('/favorites'), 'Please sign in to view your watchlist')}
+              aria-label={`Watchlist${favorites.length ? `, ${favorites.length} items` : ''}`}
+              className="relative hidden h-10 w-10 items-center justify-center rounded-full text-gray-700 hover:bg-gray-100 sm:flex"
+            >
+              <Heart className="h-5 w-5" />
+              {favorites.length > 0 && <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">{favorites.length}</span>}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsCartOpen(true)}
+              aria-label={`Shopping cart${itemCount ? `, ${itemCount} items` : ''}`}
+              className="relative flex h-10 w-9 items-center justify-center rounded-full text-gray-700 hover:bg-gray-100 sm:w-10"
+            >
+              <ShoppingCart className="h-5 w-5" />
+              {itemCount > 0 && <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#07513B] px-1 text-[10px] font-bold text-white">{itemCount}</span>}
+            </button>
+
+            {user ? (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsAccountOpen((open) => !open)}
+                  aria-label="Open account menu"
+                  aria-expanded={isAccountOpen}
+                  className="flex items-center gap-1 rounded-full p-0.5 hover:bg-gray-100"
+                >
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#07513B] text-sm font-bold text-white">{initial}</span>
+                  <ChevronDown className="hidden h-4 w-4 text-gray-500 sm:block" />
+                </button>
+                {isAccountOpen && (
+                  <>
+                    <button type="button" aria-label="Close account menu" className="fixed inset-0 z-30 cursor-default" onClick={() => setIsAccountOpen(false)} />
+                    <div className="absolute right-0 z-40 mt-2 w-72 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+                      <div className="border-b border-gray-100 p-4">
+                        <p className="font-bold text-gray-900">{profile?.full_name || 'My account'}</p>
+                        <p className="truncate text-xs text-gray-500">{profile?.email || user.email}</p>
+                      </div>
+                      <div className="p-2">
+                        {canOpenAdmin && <AccountLink icon={Shield} label="Admin dashboard" onClick={() => { navigate('/admin'); setIsAccountOpen(false); }} accent />}
+                        <AccountLink icon={Package} label="Purchases" onClick={() => { navigate('/buyer-orders'); setIsAccountOpen(false); }} />
+                        <AccountLink icon={Heart} label="Watchlist" onClick={() => { navigate('/favorites'); setIsAccountOpen(false); }} />
+                        <AccountLink icon={LayoutDashboard} label="Seller Hub" onClick={() => { navigate('/dashboard'); setIsAccountOpen(false); }} />
+                        <AccountLink icon={Gavel} label="My auctions" onClick={() => { navigate('/my-auctions'); setIsAccountOpen(false); }} />
+                        <AccountLink icon={Settings} label="Settings" onClick={() => { navigate('/settings'); setIsAccountOpen(false); }} />
+                      </div>
+                      <div className="border-t border-gray-100 p-2">
+                        <AccountLink icon={LogOut} label="Sign out" danger onClick={() => { void signOut(); setIsAccountOpen(false); navigate('/'); }} />
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <button type="button" onClick={() => openAuthModal()} aria-label="Sign in" className="flex h-10 w-9 items-center justify-center rounded-full text-gray-700 hover:bg-gray-100 sm:w-auto sm:gap-2 sm:px-2">
+                <User className="h-5 w-5" /><span className="hidden text-sm font-semibold sm:inline">Sign in</span>
+              </button>
+            )}
           </div>
         </div>
-      )}
+
+        <form onSubmit={submitSearch} className="flex min-w-0 gap-2 pb-3 lg:hidden" role="search">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-500" />
+            <input
+              type="search"
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              placeholder="Search for anything"
+              className="h-11 w-full rounded-full border-2 border-gray-900 bg-white pl-10 pr-12 text-sm outline-none focus:border-[#07513B]"
+            />
+            <button type="submit" aria-label="Search" className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-[#07513B] text-white"><Search className="h-4 w-4" /></button>
+          </div>
+          {showFiltersButton && onToggleFilters && (
+            <button type="button" onClick={onToggleFilters} aria-label="Open filters" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-800"><SlidersHorizontal className="h-5 w-5" /></button>
+          )}
+        </form>
+      </div>
+
+      <nav className="hidden border-t border-gray-100 lg:block" aria-label="Shop navigation">
+        <div className="market-container flex h-10 items-center gap-6 overflow-x-auto whitespace-nowrap text-sm">
+          <button type="button" onClick={() => navigate('/products')} className="flex items-center gap-1.5 font-bold text-gray-900 hover:text-[#07513B]"><Store className="h-4 w-4" />Shop all</button>
+          {quickCategories.map((category) => (
+            <button type="button" key={category.id} onClick={() => navigate(`/products?category=${category.id}`)} className="text-gray-600 hover:text-[#07513B]">{category.name}</button>
+          ))}
+          <button type="button" onClick={() => navigate('/products?listing=auction')} className="ml-auto flex items-center gap-1.5 font-bold text-[#07513B]"><Gavel className="h-4 w-4" />Auctions</button>
+        </div>
+      </nav>
 
       {isMenuOpen && (
         <>
-          <div
-            className="fixed inset-0 z-30 lg:hidden"
-            onClick={() => setIsMenuOpen(false)}
-          />
-          <div className="lg:hidden border-t border-gray-200 bg-white relative z-40">
-            <nav className="px-4 py-3 space-y-2">
-              <button
-                onClick={() => {
-                  navigate('/products');
-                  setIsMenuOpen(false);
-                }}
-                className="w-full text-left block py-2 text-sm font-medium text-gray-700 hover:text-emerald-700"
-              >
-                All Products
-              </button>
-              <button
-                onClick={() => {
-                  navigate('/submit-product');
-                  setIsMenuOpen(false);
-                }}
-                className="w-full text-left block py-3 px-4 text-sm font-bold text-white bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 rounded-lg transition shadow-md"
-              >
-                Donate a Product Now
-              </button>
-              <a
-                href="https://www.beckah.org/donate"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block py-2 text-sm font-medium text-gray-700 hover:text-emerald-700"
-              >
-                Support Our Cause
-              </a>
-              <a
-                href="https://www.beckah.org"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block py-2 text-sm font-medium text-gray-700 hover:text-emerald-700"
-              >
-                Privacy Policy
-              </a>
-              <a
-                href="https://www.beckah.org"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block py-2 text-sm font-medium text-gray-700 hover:text-emerald-700"
-              >
-                Terms & Conditions
-              </a>
-            </nav>
+          <button type="button" aria-label="Close menu" onClick={() => setIsMenuOpen(false)} className="fixed inset-0 top-[112px] z-30 bg-black/40 lg:hidden" />
+          <div className="absolute left-0 right-0 z-40 max-h-[calc(100vh-7rem)] overflow-y-auto border-t border-gray-200 bg-white p-4 shadow-xl lg:hidden">
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => navigate('/products')} className="flex items-center gap-2 rounded-xl bg-gray-100 p-3 text-left text-sm font-bold"><Store className="h-4 w-4" />Shop all</button>
+              <button type="button" onClick={() => navigate('/products?listing=auction')} className="flex items-center gap-2 rounded-xl bg-lime-100 p-3 text-left text-sm font-bold text-[#032F24]"><Gavel className="h-4 w-4" />Auctions</button>
+              <button type="button" onClick={goToSell} className="col-span-2 flex items-center justify-center gap-2 rounded-xl bg-[#07513B] p-3 text-sm font-bold text-white"><Tag className="h-4 w-4" />Sell an item</button>
+            </div>
+            <p className="mb-2 mt-5 text-xs font-black uppercase tracking-wider text-gray-400">Categories</p>
+            <div className="grid grid-cols-2 gap-x-4">
+              {categories.map((category) => <button type="button" key={category.id} onClick={() => navigate(`/products?category=${category.id}`)} className="border-b border-gray-100 py-3 text-left text-sm text-gray-700">{category.name}</button>)}
+            </div>
+            <div className="mt-5 space-y-1 border-t border-gray-200 pt-3">
+              <a href="https://www.beckah.org/programs" className="block rounded-lg px-2 py-2 text-sm text-gray-700">Programs</a>
+              <a href="https://www.beckah.org/community-services" className="block rounded-lg px-2 py-2 text-sm text-gray-700">Community services</a>
+            </div>
           </div>
         </>
       )}
@@ -463,5 +315,27 @@ export default function Header({ onToggleFilters, showFiltersButton = false }: H
       <AuthModal />
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
     </header>
+  );
+}
+
+interface AccountLinkProps {
+  icon: typeof User;
+  label: string;
+  onClick: () => void;
+  accent?: boolean;
+  danger?: boolean;
+}
+
+function AccountLink({ icon: Icon, label, onClick, accent = false, danger = false }: AccountLinkProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${
+        accent ? 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100' : danger ? 'text-red-600 hover:bg-red-50' : 'text-gray-700 hover:bg-gray-50'
+      }`}
+    >
+      <Icon className="h-4 w-4" />{label}
+    </button>
   );
 }

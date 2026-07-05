@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import type { Auction } from '../types/auction';
 
 export interface Product {
   id: string;
@@ -15,6 +16,11 @@ export interface Product {
   seller_id: string | null;
   created_at: string;
   updated_at: string;
+  listing_type?: 'fixed_price' | 'auction';
+  submission_type?: 'donation' | 'symbolic_sale' | 'public_sale';
+  rating_avg?: string | number;
+  rating_count?: number;
+  auctions?: Auction | Auction[] | null;
 }
 
 export interface Category {
@@ -32,9 +38,11 @@ export function useProducts(categoryId?: string) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchProducts() {
+    // Realtime/broadcast refetches must not flash the loading spinner: the
+    // grid would unmount (killing any open modal) on every remote bid.
+    async function fetchProducts(silent = false) {
       try {
-        setLoading(true);
+        if (!silent) setLoading(true);
         setError(null);
 
         const { data: { session } } = await supabase.auth.getSession();
@@ -51,7 +59,7 @@ export function useProducts(categoryId?: string) {
 
         let query = supabase
           .from('products')
-          .select('*')
+          .select('*, auctions(*)')
           .eq('status', 'available')
           .order('created_at', { ascending: false });
 
@@ -63,7 +71,11 @@ export function useProducts(categoryId?: string) {
 
         if (fetchError) throw fetchError;
 
-        setProducts(data || []);
+        setProducts(((data || []) as Product[]).filter((product) => {
+          if (product.listing_type !== 'auction') return true;
+          const auction = getProductAuction(product);
+          return Boolean(auction && ['active', 'scheduled'].includes(auction.status));
+        }));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch products');
         console.error('Error fetching products:', err);
@@ -85,7 +97,18 @@ export function useProducts(categoryId?: string) {
         },
         (payload) => {
           console.log('Products change detected:', payload);
-          fetchProducts();
+          fetchProducts(true);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'auctions'
+        },
+        () => {
+          fetchProducts(true);
         }
       )
       .subscribe((status) => {
@@ -94,7 +117,7 @@ export function useProducts(categoryId?: string) {
 
     const handleProductsRefresh = () => {
       console.log('Manual products refresh triggered');
-      fetchProducts();
+      fetchProducts(true);
     };
 
     window.addEventListener('products-updated', handleProductsRefresh);
@@ -106,6 +129,11 @@ export function useProducts(categoryId?: string) {
   }, [categoryId]);
 
   return { products, loading, error };
+}
+
+export function getProductAuction(product: Product): Auction | null {
+  if (Array.isArray(product.auctions)) return product.auctions[0] || null;
+  return product.auctions || null;
 }
 
 export function useCategories() {

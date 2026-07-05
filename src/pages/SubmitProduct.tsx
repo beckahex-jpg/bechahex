@@ -1,14 +1,25 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { X, Upload, Check, Sparkles, ChevronLeft, Save } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { X, Upload, Check, Sparkles, Save } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import AISmartProductUpload from '../components/AISmartProductUpload';
 import { useToast } from '../contexts/ToastContext';
+import AuctionFields from '../components/auction/AuctionFields';
+import ListingTypeSelector from '../components/auction/ListingTypeSelector';
+import { auctionValuesAreValid, createDefaultAuctionValues, type AuctionFormValues, type ListingType } from '../types/auctionForm';
 
 interface Category {
   id: string;
   name: string;
+}
+
+interface AIProductData {
+  title: string;
+  description: string;
+  category_id: string;
+  price: string | number;
+  images?: File[];
 }
 
 interface ProductFormData {
@@ -20,6 +31,8 @@ interface ProductFormData {
   original_price: string;
   seller_symbolic_price: string;
   submission_type: 'donation' | 'symbolic_sale' | 'public_sale';
+  listing_type: ListingType;
+  auction: AuctionFormValues;
   images: File[];
 }
 
@@ -28,6 +41,7 @@ const AUTOSAVE_KEY = 'product_submission_draft';
 export default function SubmitProduct() {
   const { user, openAuthModal } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { showSuccess, showError, showWarning } = useToast();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
@@ -42,6 +56,8 @@ export default function SubmitProduct() {
         const parsed = JSON.parse(saved);
         return {
           ...parsed,
+          listing_type: parsed.listing_type || (searchParams.get('listing') === 'auction' ? 'auction' : 'fixed_price'),
+          auction: { ...createDefaultAuctionValues(), ...(parsed.auction || {}) },
           images: []
         };
       } catch {
@@ -54,6 +70,8 @@ export default function SubmitProduct() {
           original_price: '',
           seller_symbolic_price: '',
           submission_type: 'donation',
+          listing_type: searchParams.get('listing') === 'auction' ? 'auction' : 'fixed_price',
+          auction: createDefaultAuctionValues(),
           images: [],
         };
       }
@@ -67,6 +85,8 @@ export default function SubmitProduct() {
       original_price: '',
       seller_symbolic_price: '',
       submission_type: 'donation',
+      listing_type: searchParams.get('listing') === 'auction' ? 'auction' : 'fixed_price',
+      auction: createDefaultAuctionValues(),
       images: [],
     };
   });
@@ -265,9 +285,67 @@ export default function SubmitProduct() {
     return imageUrls;
   };
 
+  const uploadAuctionReviewImages = async (): Promise<string[]> => {
+    if (!user) throw new Error('Please sign in to create an auction.');
+    const paths: string[] = [];
+    for (const file of formData.images) {
+      const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const path = `${user.id}/${crypto.randomUUID()}.${extension}`;
+      const { error } = await supabase.storage.from('auction-review-images').upload(path, file, {
+        contentType: file.type,
+        upsert: false,
+      });
+      if (error) {
+        if (paths.length) await supabase.storage.from('auction-review-images').remove(paths);
+        throw error;
+      }
+      paths.push(path);
+    }
+    return paths;
+  };
+
   const handleSubmit = async () => {
+    let reviewPaths: string[] = [];
+    let auctionRequestStarted = false;
     try {
       setLoading(true);
+
+      if (formData.listing_type === 'auction') {
+        reviewPaths = await uploadAuctionReviewImages();
+        auctionRequestStarted = true;
+        const { data, error } = await supabase.functions.invoke('create-auction', {
+          body: {
+            title: formData.title,
+            description: formData.description,
+            categoryId: formData.category_id || null,
+            condition: formData.condition,
+            reviewImagePaths: reviewPaths,
+            startingPrice: Number(formData.auction.startingPrice),
+            minimumBidIncrement: Number(formData.auction.minimumBidIncrement),
+            shippingCost: Number(formData.auction.shippingCost),
+            startsAt: new Date(formData.auction.startsAt).toISOString(),
+            endsAt: new Date(formData.auction.endsAt).toISOString(),
+            winnerPaymentWindowHours: Number(formData.auction.winnerPaymentWindowHours),
+            submissionType: formData.submission_type,
+            originalPrice: formData.original_price ? Number(formData.original_price) : null,
+            sellerSymbolicPrice: formData.seller_symbolic_price ? Number(formData.seller_symbolic_price) : null,
+          },
+        });
+        if (error) throw error;
+        if (data?.error) throw new Error(String(data.error));
+
+        localStorage.removeItem(AUTOSAVE_KEY);
+        if (data?.moderation?.status === 'blocked') {
+          showError(String(data.moderation.reason || 'This product did not pass the AI safety review and was not published.'));
+          navigate('/my-auctions');
+          return;
+        }
+        showSuccess(data?.moderation?.approved
+          ? 'Your auction passed AI review and is now published.'
+          : 'The AI review could not finish immediately. The auction is saved and can be retried from My Auctions.');
+        navigate('/my-auctions?created=1');
+        return;
+      }
 
       const imageUrls: string[] = formData.images.length > 0
         ? await uploadImages()
@@ -277,7 +355,7 @@ export default function SubmitProduct() {
         ? parseFloat(formData.original_price) || 0
         : parseFloat(formData.price) || 0;
 
-      const { data: newSubmission, error } = await supabase.from('product_submissions').insert({
+      const { error } = await supabase.from('product_submissions').insert({
         user_id: user?.id,
         title: formData.title,
         description: formData.description,
@@ -289,7 +367,7 @@ export default function SubmitProduct() {
         submission_type: formData.submission_type,
         images: imageUrls,
         status: 'pending',
-      }).select().single();
+      });
 
       if (error) throw error;
 
@@ -297,8 +375,11 @@ export default function SubmitProduct() {
       showSuccess('Product submitted successfully! Our AI is reviewing it now.');
       navigate('/dashboard');
     } catch (error) {
+      if (!auctionRequestStarted && reviewPaths.length) {
+        await supabase.storage.from('auction-review-images').remove(reviewPaths);
+      }
       console.error('Error submitting product:', error);
-      showError('Failed to submit product. Please try again.');
+      showError(error instanceof Error ? error.message : 'Failed to submit product. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -317,7 +398,13 @@ export default function SubmitProduct() {
     if (formData.category_id) completed++;
     total++;
 
-    if (formData.submission_type === 'donation') {
+    if (formData.listing_type === 'auction') {
+      if (Number(formData.auction.startingPrice) > 0) completed++;
+      if (Number(formData.auction.minimumBidIncrement) > 0) completed++;
+      if (formData.auction.startsAt) completed++;
+      if (formData.auction.endsAt) completed++;
+      total += 4;
+    } else if (formData.submission_type === 'donation') {
       if (formData.original_price && formData.original_price !== '0') completed++;
       total++;
     } else if (formData.submission_type === 'symbolic_sale') {
@@ -336,6 +423,10 @@ export default function SubmitProduct() {
   const canSubmit = useMemo(() => {
     if (!formData.title || !formData.category_id || formData.images.length === 0) return false;
 
+    if (formData.listing_type === 'auction') {
+      return auctionValuesAreValid(formData.auction);
+    }
+
     if (formData.submission_type === 'donation') {
       return formData.original_price && formData.original_price !== '0';
     } else if (formData.submission_type === 'symbolic_sale') {
@@ -347,8 +438,8 @@ export default function SubmitProduct() {
     }
   }, [formData]);
 
-  const handleAIComplete = (aiData: any) => {
-    const aiPrice = parseFloat(aiData.price) || 0;
+  const handleAIComplete = (aiData: AIProductData) => {
+    const aiPrice = Number(aiData.price) || 0;
 
     let updatedFormData = {
       ...formData,
@@ -422,13 +513,6 @@ export default function SubmitProduct() {
           <div className="flex-1">
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-4 sm:px-6 py-6 sm:py-8 text-white relative overflow-hidden">
-                <button
-                  onClick={() => navigate('/dashboard')}
-                  className="text-white hover:text-gray-200 mb-3 sm:mb-4 inline-flex items-center gap-2 text-xs sm:text-sm active:scale-95"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  <span>Back to Dashboard</span>
-                </button>
                 <h1 className="text-xl sm:text-2xl font-bold">Add New Product</h1>
                 <p className="text-green-100 mt-1 text-xs sm:text-sm">Fill out the form below to list your product</p>
 
@@ -606,6 +690,14 @@ export default function SubmitProduct() {
                     </div>
                   </div>
 
+                  <div className="mb-6">
+                    <label className="mb-3 block text-sm font-black uppercase tracking-wide text-[#0b2e20]">Selling method</label>
+                    <ListingTypeSelector
+                      value={formData.listing_type}
+                      onChange={(listing_type) => setFormData({ ...formData, listing_type })}
+                    />
+                  </div>
+
                   <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-4 mb-5">
                     <p className="text-green-800 font-semibold text-center">
                       Would you like to donate this product as charity?
@@ -683,7 +775,7 @@ export default function SubmitProduct() {
                     </button>
                   </div>
 
-                  {formData.submission_type === 'donation' && (
+                  {formData.listing_type === 'fixed_price' && formData.submission_type === 'donation' && (
                     <div className="bg-green-50 border-2 border-green-300 rounded-xl p-5">
                       <label className="block text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
                         Product Sale Price (USD)
@@ -713,7 +805,7 @@ export default function SubmitProduct() {
                     </div>
                   )}
 
-                  {formData.submission_type === 'symbolic_sale' && (
+                  {formData.listing_type === 'fixed_price' && formData.submission_type === 'symbolic_sale' && (
                     <div className="space-y-4">
                       <div className="bg-blue-50 border-2 border-blue-300 rounded-xl p-5">
                         <label className="block text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
@@ -777,7 +869,7 @@ export default function SubmitProduct() {
                     </div>
                   )}
 
-                  {formData.submission_type === 'public_sale' && (
+                  {formData.listing_type === 'fixed_price' && formData.submission_type === 'public_sale' && (
                     <div className="space-y-4">
                       <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-5">
                         <label className="block text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
@@ -817,6 +909,19 @@ export default function SubmitProduct() {
                         </p>
                       </div>
                     </div>
+                  )}
+
+                  {formData.listing_type === 'auction' && (
+                    <>
+                      <AuctionFields value={formData.auction} onChange={(auction) => setFormData({ ...formData, auction })} />
+                      {formData.submission_type === 'symbolic_sale' && (
+                        <div className="mt-4 rounded-xl border-2 border-blue-200 bg-blue-50 p-5">
+                          <label className="mb-2 block text-sm font-bold text-gray-900">Your symbolic amount (private)</label>
+                          <input type="number" min="0" step="0.01" value={formData.seller_symbolic_price} onChange={(event) => setFormData({ ...formData, seller_symbolic_price: event.target.value })} className="w-full rounded-xl border-2 border-gray-300 px-4 py-3 focus:border-lime-500 focus:outline-none" placeholder="0.00" />
+                          <p className="mt-2 text-xs text-blue-700">The remaining proceeds after this amount follow the platform charity rules.</p>
+                        </div>
+                      )}
+                    </>
                   )}
                 </section>
 
@@ -893,18 +998,21 @@ export default function SubmitProduct() {
                       {formData.images.length === 0 && <li>Add at least one product image</li>}
                       {!formData.title && <li>Enter product name</li>}
                       {!formData.category_id && <li>Select a category</li>}
-                      {formData.submission_type === 'donation' && (!formData.original_price || formData.original_price === '0') && (
+                      {formData.listing_type === 'fixed_price' && formData.submission_type === 'donation' && (!formData.original_price || formData.original_price === '0') && (
                         <li>Enter product sale price</li>
                       )}
-                      {formData.submission_type === 'symbolic_sale' && (
+                      {formData.listing_type === 'fixed_price' && formData.submission_type === 'symbolic_sale' && (
                         <>
                           {(!formData.original_price || formData.original_price === '0') && <li>Enter original product price</li>}
                           {(!formData.seller_symbolic_price || formData.seller_symbolic_price === '0') && <li>Enter your symbolic price</li>}
                           {(!formData.price || formData.price === '0') && <li>Enter public sale price</li>}
                         </>
                       )}
-                      {formData.submission_type === 'public_sale' && (!formData.price || formData.price === '0') && (
+                      {formData.listing_type === 'fixed_price' && formData.submission_type === 'public_sale' && (!formData.price || formData.price === '0') && (
                         <li>Enter sale price</li>
+                      )}
+                      {formData.listing_type === 'auction' && !auctionValuesAreValid(formData.auction) && (
+                        <li>Complete valid auction pricing and timing (5 minutes to 30 days)</li>
                       )}
                     </ul>
                   </div>
@@ -965,11 +1073,16 @@ export default function SubmitProduct() {
                             Donation
                           </span>
                         )}
+                        {formData.listing_type === 'auction' && (
+                          <span className="rounded bg-[#062b1d] px-2 py-1 text-xs font-bold text-lime-400">AUCTION</span>
+                        )}
                       </div>
 
                       <div className="pt-3 border-t border-gray-200">
                         <div className="flex items-baseline gap-2">
-                          {formData.submission_type === 'donation' && formData.original_price ? (
+                          {formData.listing_type === 'auction' ? (
+                            <div><p className="text-xs font-semibold uppercase text-gray-500">Starting price</p><span className="text-2xl font-black text-[#0b2e20]">${Number(formData.auction.startingPrice || 0).toFixed(2)}</span></div>
+                          ) : formData.submission_type === 'donation' && formData.original_price ? (
                             <span className="text-2xl font-bold text-green-600">
                               ${formData.original_price}
                             </span>

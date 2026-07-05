@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LayoutDashboard, ShoppingCart, Layers, ShoppingBag, Users, ChevronDown, DollarSign, X } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Layers, ShoppingBag, Users, ChevronDown, DollarSign, X, Gavel, Star } from 'lucide-react';
 
 interface SidebarProps {
   activeSection: string;
@@ -23,7 +23,9 @@ export default function Sidebar({ activeSection, onSectionChange, pendingSubmiss
       { id: 'new-category', label: 'New Category' }
     ]},
     { id: 'orders', label: 'Orders', icon: ShoppingBag, group: 'all' },
+    { id: 'auctions', label: 'Auctions', icon: Gavel, group: 'all' },
     { id: 'payments', label: 'Payments', icon: DollarSign, group: 'all' },
+    { id: 'reviews', label: 'Reviews', icon: Star, group: 'all' },
     { id: 'user', label: 'User', icon: Users, group: 'all', hasSubmenu: true, submenu: [
       { id: 'all-users', label: 'All Users' }
     ]}
@@ -112,7 +114,7 @@ export default function Sidebar({ activeSection, onSectionChange, pendingSubmiss
               </button>
               {item.hasSubmenu && item.submenu && openMenus.includes(item.id) && (
                 <div className="ml-8 mt-1 space-y-1">
-                  {item.submenu.map((sub: any) => (
+                  {item.submenu.map((sub) => (
                     <button
                       key={sub.id}
                       onClick={() => onSectionChange(sub.id)}

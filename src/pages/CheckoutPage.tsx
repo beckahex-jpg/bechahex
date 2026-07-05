@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
 import { supabase } from '../lib/supabase';
-import { Package, CreditCard, MapPin, ArrowLeft, Loader2, ShoppingCart, Plus, Minus, Trash2 } from 'lucide-react';
+import { Package, CreditCard, MapPin, ArrowLeft, Loader2, ShoppingCart, Plus, Minus, Trash2, CheckCircle, X } from 'lucide-react';
 import { US_STATES } from '../utils/usStates';
-import MultiPaymentOptions from '../components/MultiPaymentOptions';
+import StripeCheckout from '../components/StripeCheckout';
 import CartDrawer from '../components/CartDrawer';
 
 interface ShippingAddress {
@@ -25,6 +25,7 @@ export default function CheckoutPage() {
   const [orderId, setOrderId] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPaymentOptions, setShowPaymentOptions] = useState(false);
+  const [paymentDone, setPaymentDone] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [shippingAddress, setShippingAddress] = useState<ShippingAddress>({
     fullName: '',
@@ -46,12 +47,14 @@ export default function CheckoutPage() {
       navigate('/');
       return;
     }
-    if (items.length === 0) {
+    // clearCart after a successful payment empties items — don't bounce the
+    // buyer to the homepage while the payment modal / success screen is up.
+    if (items.length === 0 && !showPaymentOptions && !paymentDone) {
       navigate('/');
       return;
     }
     loadUserProfile();
-  }, [user, items, navigate]);
+  }, [user, items, navigate, showPaymentOptions, paymentDone]);
 
   const loadUserProfile = async () => {
     if (!user) return;
@@ -163,13 +166,13 @@ export default function CheckoutPage() {
 
       const sellerIds = new Set<string>();
       for (const item of items) {
-        if (item.products.user_id) {
-          sellerIds.add(item.products.user_id);
+        if (item.products.seller_id) {
+          sellerIds.add(item.products.seller_id);
         }
       }
 
       for (const sellerId of sellerIds) {
-        const sellerItems = items.filter(item => item.products.user_id === sellerId);
+        const sellerItems = items.filter(item => item.products.seller_id === sellerId);
         const sellerTotal = sellerItems.reduce((sum, item) => {
           const price = typeof item.products.price === 'string'
             ? parseFloat(item.products.price)
@@ -206,148 +209,44 @@ export default function CheckoutPage() {
   };
 
   const handlePaymentSuccess = async () => {
-    try {
-      console.log('Payment successful, updating order...');
-      await supabase
-        .from('orders')
-        .update({
-          payment_status: 'paid',
-          status: 'confirmed',
-        })
-        .eq('id', orderId);
+    // The confirm-order-payment edge function has already verified the
+    // payment with Stripe, marked the order paid, and notified the buyer.
+    setPaymentDone(true);
 
-      await supabase
-        .from('notifications')
-        .insert({
-          user_id: user?.id,
-          type: 'order_update',
-          title: 'Payment Successful!',
-          message: `Your payment for order #${orderId.slice(0, 8)} has been processed successfully.`,
-          data: { order_id: orderId }
-        });
-
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-
-        const orderConfirmationUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-order-confirmation`;
-        await fetch(orderConfirmationUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            orderId: orderId,
-          }),
-        });
-      } catch (emailError) {
-        console.error('Failed to send order confirmation email:', emailError);
-      }
-
-      await clearCart();
+    window.setTimeout(() => {
       navigate(`/order-confirmation/${orderId}`);
+    }, 3500);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      const orderConfirmationUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-order-confirmation`;
+      await fetch(orderConfirmationUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          orderId: orderId,
+        }),
+      });
+    } catch (emailError) {
+      console.error('Failed to send order confirmation email:', emailError);
+    }
+
+    try {
+      await clearCart();
     } catch (error) {
-      console.error('Error updating order:', error);
+      console.error('Error clearing cart:', error);
     }
   };
 
   const handlePaymentError = (error: string) => {
-    alert(`Payment Failed: ${error}`);
+    // StripeCheckout renders the error inline inside the modal.
+    console.error('Payment failed:', error);
   };
-
-  if (showPaymentOptions && orderId) {
-    return (
-      <div className="min-h-screen bg-gray-50 py-4 sm:py-6 lg:py-8 pb-24 lg:pb-8">
-        <div className="max-w-4xl mx-auto px-3 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between mb-4 sm:mb-6">
-            <button
-              onClick={() => setShowPaymentOptions(false)}
-              className="flex items-center gap-2 text-gray-600 hover:text-gray-900 active:scale-95"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="text-sm sm:text-base">Back to Shipping</span>
-            </button>
-            <button
-              onClick={() => {
-                setShowPaymentOptions(false);
-                setIsCartOpen(true);
-              }}
-              className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium text-sm"
-            >
-              <ShoppingCart className="w-4 h-4" />
-              <span>Edit Cart</span>
-            </button>
-          </div>
-
-          <div className="grid lg:grid-cols-3 gap-4 sm:gap-6 mb-6">
-            <div className="lg:col-span-2">
-              <div className="mb-4 sm:mb-6 p-4 sm:p-6 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-xl border-2 border-blue-200">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0">
-                  <div>
-                    <p className="text-xs sm:text-sm text-gray-600 mb-1">Your Order</p>
-                    <p className="text-base sm:text-lg font-bold text-gray-900">Order #{orderId.slice(0, 8)}</p>
-                  </div>
-                  <div className="text-left sm:text-right">
-                    <p className="text-xs sm:text-sm text-gray-600 mb-1">Total</p>
-                    <p className="text-2xl sm:text-3xl font-bold text-blue-600">${finalTotal.toFixed(2)}</p>
-                  </div>
-                </div>
-              </div>
-
-              <MultiPaymentOptions
-                amount={finalTotal}
-                orderId={orderId}
-                onSuccess={handlePaymentSuccess}
-                onError={handlePaymentError}
-              />
-            </div>
-
-            <div className="lg:col-span-1">
-              <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-200 lg:sticky lg:top-8">
-                <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <Package className="w-5 h-5 text-purple-600" />
-                  Order Items ({items.length})
-                </h3>
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {items.map((item) => {
-                    const price = typeof item.products.price === 'string'
-                      ? parseFloat(item.products.price)
-                      : item.products.price;
-
-                    return (
-                      <div key={item.id} className="flex gap-2 pb-3 border-b border-gray-100 last:border-0">
-                        {item.products.images && item.products.images[0] && (
-                          <img
-                            src={item.products.images[0]}
-                            alt={item.products.title}
-                            className="w-12 h-12 object-cover rounded-lg flex-shrink-0"
-                          />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <h4 className="text-xs font-medium text-gray-900 line-clamp-2">{item.products.title}</h4>
-                          <p className="text-xs text-gray-500 mt-1">Qty: {item.quantity}</p>
-                          <p className="text-xs font-bold text-gray-900">${(price * item.quantity).toFixed(2)}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <div className="flex justify-between text-sm font-bold">
-                    <span>Total:</span>
-                    <span className="text-blue-600">${finalTotal.toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gray-50 py-4 sm:py-6 lg:py-8 pb-24 lg:pb-8">
@@ -362,7 +261,7 @@ export default function CheckoutPage() {
           </button>
           <button
             onClick={() => setIsCartOpen(true)}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition shadow-md text-sm"
+            className="flex items-center gap-2 rounded-full bg-[#07513B] px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-[#032F24]"
           >
             <ShoppingCart className="w-4 h-4" />
             <span>View Cart ({items.length})</span>
@@ -376,15 +275,15 @@ export default function CheckoutPage() {
             <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border border-gray-200">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <MapPin className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+                  <div className="rounded-lg bg-[#F2FAE8] p-2">
+                    <MapPin className="w-4 h-4 text-[#07513B] sm:w-5 sm:h-5" />
                   </div>
                   <h2 className="text-lg sm:text-xl font-bold text-gray-900">Shipping Address</h2>
                 </div>
               </div>
 
-              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-xs sm:text-sm text-blue-800">
+              <div className="mb-4 rounded-lg border border-[#CFE8AC] bg-[#F2FAE8] p-3">
+                <p className="text-xs text-[#07513B] sm:text-sm">
                   <span className="font-semibold">Note:</span> Your shipping address will be saved for future orders
                 </p>
               </div>
@@ -398,7 +297,7 @@ export default function CheckoutPage() {
                     type="text"
                     value={shippingAddress.fullName}
                     onChange={(e) => handleInputChange('fullName', e.target.value)}
-                    className="w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#07513B] focus:ring-2 focus:ring-[#07513B]/20 sm:px-4 sm:py-2.5 sm:text-base"
                     placeholder="John Smith"
                   />
                 </div>
@@ -411,7 +310,7 @@ export default function CheckoutPage() {
                     type="tel"
                     value={shippingAddress.phone}
                     onChange={(e) => handleInputChange('phone', e.target.value)}
-                    className="w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#07513B] focus:ring-2 focus:ring-[#07513B]/20 sm:px-4 sm:py-2.5 sm:text-base"
                     placeholder="+1 (555) 123-4567"
                   />
                 </div>
@@ -424,7 +323,7 @@ export default function CheckoutPage() {
                     type="text"
                     value={shippingAddress.street}
                     onChange={(e) => handleInputChange('street', e.target.value)}
-                    className="w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#07513B] focus:ring-2 focus:ring-[#07513B]/20 sm:px-4 sm:py-2.5 sm:text-base"
                     placeholder="123 Main Street"
                   />
                 </div>
@@ -437,7 +336,7 @@ export default function CheckoutPage() {
                     type="text"
                     value={shippingAddress.city}
                     onChange={(e) => handleInputChange('city', e.target.value)}
-                    className="w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#07513B] focus:ring-2 focus:ring-[#07513B]/20 sm:px-4 sm:py-2.5 sm:text-base"
                     placeholder="Los Angeles"
                   />
                 </div>
@@ -449,7 +348,7 @@ export default function CheckoutPage() {
                   <select
                     value={shippingAddress.state}
                     onChange={(e) => handleInputChange('state', e.target.value)}
-                    className="w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#07513B] focus:ring-2 focus:ring-[#07513B]/20 sm:px-4 sm:py-2.5 sm:text-base"
                   >
                     <option value="">Select State</option>
                     {US_STATES.map(state => (
@@ -468,7 +367,7 @@ export default function CheckoutPage() {
                     type="text"
                     value={shippingAddress.zipCode}
                     onChange={(e) => handleInputChange('zipCode', e.target.value)}
-                    className="w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#07513B] focus:ring-2 focus:ring-[#07513B]/20 sm:px-4 sm:py-2.5 sm:text-base"
                     placeholder="90001"
                   />
                 </div>
@@ -492,22 +391,22 @@ export default function CheckoutPage() {
             <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border border-gray-200 lg:sticky lg:top-8">
               <div className="flex items-center justify-between mb-4 sm:mb-6">
                 <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="p-2 bg-purple-100 rounded-lg">
-                    <Package className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
+                  <div className="rounded-lg bg-[#F2FAE8] p-2">
+                    <Package className="w-4 h-4 text-[#07513B] sm:w-5 sm:h-5" />
                   </div>
                   <h2 className="text-lg sm:text-xl font-bold text-gray-900">Order Summary</h2>
                 </div>
                 <button
                   onClick={() => setIsCartOpen(true)}
-                  className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  className="flex items-center gap-1 text-sm font-bold text-[#07513B] hover:text-[#032F24]"
                 >
                   <ShoppingCart className="w-4 h-4" />
                   <span>View Cart</span>
                 </button>
               </div>
 
-              <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-xs text-blue-800">
+              <div className="mb-3 rounded-lg border border-[#CFE8AC] bg-[#F2FAE8] p-3">
+                <p className="text-xs text-[#07513B]">
                   <span className="font-semibold">💡 Tip:</span> You can edit quantities or remove items directly from here, or click "View Cart" for more options.
                 </p>
               </div>
@@ -531,7 +430,7 @@ export default function CheckoutPage() {
                         )}
                         <div className="flex-1 min-w-0">
                           <h3
-                            className="font-medium text-gray-900 text-sm line-clamp-2 cursor-pointer hover:text-blue-600"
+                            className="line-clamp-2 cursor-pointer text-sm font-medium text-gray-900 hover:text-[#07513B]"
                             onClick={() => navigate(`/product/${item.product_id}`)}
                           >
                             {item.products.title}
@@ -588,14 +487,14 @@ export default function CheckoutPage() {
                 </div>
                 <div className="border-t border-gray-200 pt-2 flex justify-between">
                   <span className="text-base sm:text-lg font-bold text-gray-900">Total</span>
-                  <span className="text-xl sm:text-2xl font-bold text-blue-600">${finalTotal.toFixed(2)}</span>
+                  <span className="text-xl font-black text-[#07513B] sm:text-2xl">${finalTotal.toFixed(2)}</span>
                 </div>
               </div>
 
               <button
                 onClick={handleProceedToPayment}
                 disabled={loading}
-                className="w-full mt-4 sm:mt-6 bg-gradient-to-r from-green-600 to-blue-600 text-white py-3 sm:py-4 rounded-lg sm:rounded-xl font-bold text-sm sm:text-base hover:from-green-700 hover:to-blue-700 transition flex items-center justify-center gap-2 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 lg:active:scale-100"
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-[#07513B] py-3 text-sm font-bold text-white shadow-md transition hover:bg-[#032F24] hover:shadow-lg active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 sm:mt-6 sm:py-4 sm:text-base lg:active:scale-100"
               >
                 {loading ? (
                   <>
@@ -611,12 +510,69 @@ export default function CheckoutPage() {
               </button>
 
               <p className="text-[10px] sm:text-xs text-gray-500 text-center mt-3 sm:mt-4">
-                🔒 Secure Payment with PayPal
+                🔒 Secure Payment with Stripe
               </p>
             </div>
           </div>
         </div>
       </div>
+
+      {showPaymentOptions && orderId && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-3 sm:p-4 overflow-y-auto">
+          <div className="relative my-4 w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-2xl bg-gray-50 shadow-2xl">
+            {!paymentDone && (
+              <button
+                onClick={() => setShowPaymentOptions(false)}
+                aria-label="Close payment"
+                className="absolute right-3 top-3 z-10 rounded-full bg-white p-2 text-gray-500 shadow-sm transition hover:bg-gray-100 hover:text-gray-900"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            )}
+
+            <div className="p-4 sm:p-6">
+              {paymentDone ? (
+                <div className="py-10 text-center">
+                  <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-green-100 animate-bounce">
+                    <CheckCircle className="h-12 w-12 text-green-600" />
+                  </div>
+                  <h3 className="mb-2 text-2xl font-black text-gray-900">Payment Successful! 🎉</h3>
+                  <p className="mb-1 text-gray-700">
+                    Your order <span className="font-bold">#{orderId.slice(0, 8)}</span> has been confirmed.
+                  </p>
+                  <p className="mb-2 text-lg font-black text-[#07513B]">${finalTotal.toFixed(2)}</p>
+                  <p className="mb-6 text-sm text-gray-500">
+                    A confirmation email is on its way. Redirecting you to your order…
+                  </p>
+                  <button
+                    onClick={() => navigate(`/order-confirmation/${orderId}`)}
+                    className="inline-flex items-center gap-2 rounded-full bg-[#07513B] px-8 py-3 text-sm font-bold text-white shadow-md transition hover:bg-[#032F24]"
+                  >
+                    <Package className="h-4 w-4" />
+                    View Order Details
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="mb-4 flex items-center justify-between rounded-xl border border-[#CFE8AC] bg-[#F2FAE8] p-3 pr-12 sm:p-4 sm:pr-12">
+                    <div>
+                      <p className="text-xs text-gray-600">Order #{orderId.slice(0, 8)}</p>
+                      <p className="text-sm font-semibold text-gray-900">{items.length} item{items.length === 1 ? '' : 's'}</p>
+                    </div>
+                    <p className="text-xl font-black text-[#07513B] sm:text-2xl">${finalTotal.toFixed(2)}</p>
+                  </div>
+
+                  <StripeCheckout
+                    orderId={orderId}
+                    onSuccess={handlePaymentSuccess}
+                    onError={handlePaymentError}
+                  />
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
     </div>

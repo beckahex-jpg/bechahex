@@ -25,20 +25,21 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   return (
     <>
       <div
-        className="fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity"
+        className="fixed inset-0 z-[60] bg-black/50 transition-opacity"
         onClick={onClose}
       />
 
-      <div className="fixed top-0 right-0 h-full w-full sm:w-96 bg-white shadow-2xl z-50 flex flex-col">
+      <aside className="fixed right-0 top-0 z-[70] flex h-full w-full flex-col bg-white shadow-2xl sm:w-[420px]" aria-label="Shopping cart">
         <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center gap-2">
-            <ShoppingBag className="w-5 h-5 text-blue-600" />
+            <ShoppingBag className="w-5 h-5 text-[#07513B]" />
             <h2 className="text-lg font-bold text-gray-900">
               Shopping Cart ({itemCount})
             </h2>
           </div>
           <button
             onClick={onClose}
+            aria-label="Close cart"
             className="p-2 hover:bg-gray-100 rounded-lg transition"
           >
             <X className="w-5 h-5" />
@@ -60,7 +61,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   onClose();
                   navigate('/');
                 }}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition"
+                className="rounded-full bg-[#07513B] px-6 py-2 font-medium text-white transition hover:bg-[#032F24]"
               >
                 Continue Shopping
               </button>
@@ -114,6 +115,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                         <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg">
                           <button
                             onClick={() => updateQuantity(item.product_id, item.quantity - 1)}
+                            aria-label={`Decrease quantity for ${item.products.title}`}
                             className="p-1.5 hover:bg-gray-100 rounded-l-lg transition"
                           >
                             <Minus className="w-3 h-3" />
@@ -121,6 +123,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                           <span className="text-sm font-semibold px-2">{item.quantity}</span>
                           <button
                             onClick={() => updateQuantity(item.product_id, item.quantity + 1)}
+                            aria-label={`Increase quantity for ${item.products.title}`}
                             className="p-1.5 hover:bg-gray-100 rounded-r-lg transition"
                           >
                             <Plus className="w-3 h-3" />
@@ -128,6 +131,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                         </div>
                         <button
                           onClick={() => removeFromCart(item.product_id)}
+                          aria-label={`Remove ${item.products.title} from cart`}
                           className="p-1.5 hover:bg-red-50 hover:text-red-600 rounded-lg transition"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -148,11 +152,11 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           <div className="border-t p-4 space-y-3">
             <div className="flex items-center justify-between text-lg font-bold">
               <span>Total:</span>
-              <span className="text-blue-600">${totalAmount.toFixed(2)}</span>
+              <span className="text-[#07513B]">${totalAmount.toFixed(2)}</span>
             </div>
             <button
               onClick={handleCheckout}
-              className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white py-3 rounded-lg font-semibold transition shadow-md hover:shadow-lg"
+              className="w-full rounded-full bg-[#07513B] py-3 font-semibold text-white transition hover:bg-[#032F24]"
             >
               Proceed to Checkout
             </button>
@@ -164,7 +168,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
             </button>
           </div>
         )}
-      </div>
+      </aside>
     </>
   );
 }

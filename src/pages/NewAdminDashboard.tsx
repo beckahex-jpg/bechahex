@@ -11,6 +11,8 @@ import ProductSubmissions from '../components/admin/ProductSubmissions';
 import UserManagement from '../components/admin/UserManagement';
 import OrderManagement from '../components/admin/OrderManagement';
 import PaymentManagement from '../components/admin/PaymentManagement';
+import AuctionManagement from '../components/admin/AuctionManagement';
+import ReviewsManagement from '../components/admin/ReviewsManagement';
 import { ShoppingBag, Users, Package, DollarSign, TrendingUp, TrendingDown, Clock } from 'lucide-react';
 
 interface DashboardStats {
@@ -279,7 +281,11 @@ export default function NewAdminDashboard() {
 
           {activeSection === 'orders' && <OrderManagement searchQuery={searchQuery} />}
 
+          {activeSection === 'auctions' && <AuctionManagement searchQuery={searchQuery} />}
+
           {activeSection === 'payments' && <PaymentManagement />}
+
+          {activeSection === 'reviews' && <ReviewsManagement searchQuery={searchQuery} />}
 
           {activeSection === 'all-users' && <UserManagement searchQuery={searchQuery} />}
         </main>

@@ -17,13 +17,15 @@ export default function AuthModal() {
 
   useEffect(() => {
     const savedEmail = localStorage.getItem('rememberedEmail');
-    const savedPassword = localStorage.getItem('rememberedPassword');
 
-    if (savedEmail && savedPassword) {
+    if (savedEmail) {
       setEmail(savedEmail);
-      setPassword(savedPassword);
       setRememberMe(true);
     }
+
+    // Passwords must never be persisted in browser storage. Remove values
+    // written by older versions of the application.
+    localStorage.removeItem('rememberedPassword');
   }, []);
 
   if (!isAuthModalOpen) return null;
@@ -40,10 +42,8 @@ export default function AuthModal() {
 
         if (rememberMe) {
           localStorage.setItem('rememberedEmail', email);
-          localStorage.setItem('rememberedPassword', password);
         } else {
           localStorage.removeItem('rememberedEmail');
-          localStorage.removeItem('rememberedPassword');
         }
 
         setTimeout(() => {

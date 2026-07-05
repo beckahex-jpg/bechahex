@@ -1,135 +1,59 @@
-import { Heart, TrendingUp, Package, Gift } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { ArrowRight, Gavel, Heart, Package, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
-
-interface Product {
-  id: string;
-  title: string;
-  price: number;
-  image_url: string;
-  images?: string[];
-}
 
 export default function Hero() {
   const navigate = useNavigate();
-  const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
-
-  useEffect(() => {
-    fetchFeaturedProducts();
-  }, []);
-
-  const fetchFeaturedProducts = async () => {
-    const { data } = await supabase
-      .from('products')
-      .select('id, title, price, image_url, images')
-      .eq('status', 'available')
-      .order('created_at', { ascending: false })
-      .limit(2);
-
-    if (data) {
-      setFeaturedProducts(data);
-    }
-  };
 
   return (
-    <section className="relative bg-gradient-to-br from-gray-900 via-emerald-800 to-green-700 text-white overflow-hidden">
-      <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAxMCAwIEwgMCAwIDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS1vcGFjaXR5PSIwLjA1IiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-30"></div>
+    <section className="bg-white py-3 sm:py-4">
+      <div className="market-container">
+        <div className="relative min-h-[285px] overflow-hidden rounded-3xl bg-[#DDF7B2] text-[#032F24] sm:min-h-[255px]">
+          <div aria-hidden="true" className="absolute -right-20 -top-28 h-80 w-80 rounded-full bg-[#9BEC2D]/70" />
+          <div aria-hidden="true" className="absolute -bottom-36 right-48 h-72 w-72 rounded-full border-[44px] border-white/50" />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12 relative">
-        <div className="grid lg:grid-cols-2 gap-8 items-center">
-          <div className="space-y-5">
-            <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full text-sm font-medium border border-white/20">
-              <Heart className="w-4 h-4 text-red-300" fill="currentColor" />
-              Every purchase supports our mission
-            </div>
-
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold leading-tight">
-              Discover Unique Items,
-              <span className="block bg-gradient-to-r from-yellow-300 to-orange-300 bg-clip-text text-transparent">
-                Make a Difference
-              </span>
-            </h1>
-
-            <p className="text-lg text-gray-100 leading-relaxed">
-              Shop quality pre-owned and donated items. All proceeds support our charitable mission to make a positive impact in the community.
-            </p>
-
-            <div className="mt-6 relative z-10">
-              <div className="flex flex-col sm:flex-row gap-4">
-                <button
-                  onClick={() => navigate('/submit-product')}
-                  className="group flex items-center justify-center gap-3 bg-white text-emerald-700 px-8 py-4 rounded-xl font-bold hover:bg-gray-50 transition-all duration-300 shadow-xl hover:shadow-2xl hover:scale-105"
-                >
-                  <Package className="w-5 h-5 group-hover:rotate-12 transition-transform" />
-                  Sell Your Items
+          <div className="relative grid min-h-[285px] items-center px-6 py-8 sm:min-h-[255px] sm:px-10 lg:grid-cols-[1.08fr_.92fr] lg:px-14">
+            <div className="max-w-2xl">
+              <p className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-emerald-800">
+                <Sparkles className="h-4 w-4" /> The Beckah marketplace
+              </p>
+              <h1 className="text-balance text-3xl font-black leading-[1.04] tracking-tight sm:text-4xl lg:text-5xl">
+                Find something worth keeping.
+              </h1>
+              <p className="mt-3 max-w-xl text-sm leading-6 text-emerald-950/80 sm:text-base">
+                Shop pre-owned, donated, and auction items while supporting the community.
+              </p>
+              <div className="mt-5 flex flex-wrap items-center gap-4">
+                <button type="button" onClick={() => navigate('/products')} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#032F24] px-6 text-sm font-bold text-white transition hover:bg-[#07513B]">
+                  Shop now <ArrowRight className="h-4 w-4" />
                 </button>
-
-                <a
-                  href="https://www.beckah.org/donate"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group flex items-center justify-center gap-3 bg-gradient-to-r from-yellow-400 to-orange-400 text-gray-900 px-8 py-4 rounded-xl font-bold hover:from-yellow-500 hover:to-orange-500 transition-all duration-300 shadow-xl hover:shadow-2xl hover:scale-105"
-                >
-                  <Gift className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                  Donate Now
-                </a>
+                <button type="button" onClick={() => navigate('/submit-product')} className="text-sm font-bold underline decoration-2 underline-offset-4 hover:text-emerald-800">Sell an item</button>
               </div>
             </div>
-          </div>
 
-          <div className="hidden lg:block relative">
-            <div className="flex gap-4 justify-center">
-              {featuredProducts.map((product) => (
-                <div
-                  key={product.id}
-                  onClick={() => navigate(`/product/${product.id}`)}
-                  className="bg-white rounded-xl p-5 shadow-2xl transform hover:scale-105 transition cursor-pointer group w-64"
-                >
-                  <div className="w-full h-40 rounded-lg mb-4 overflow-hidden bg-gray-100">
-                    {(() => {
-                      let images = product.images;
-                      if (typeof images === 'string') {
-                        try {
-                          images = JSON.parse(images);
-                        } catch {
-                          images = [];
-                        }
-                      }
-                      const imageUrl = (images && images.length > 0 ? images[0] : product.image_url) || 'https://images.pexels.com/photos/607812/pexels-photo-607812.jpeg?auto=compress&cs=tinysrgb&w=800';
-
-                      return (
-                        <img
-                          src={imageUrl}
-                          alt={product.title}
-                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                        />
-                      );
-                    })()}
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-base font-semibold text-gray-900 truncate">{product.title}</p>
-                    <p className="text-xl font-bold text-emerald-600">${product.price}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="absolute -top-4 -right-4 bg-emerald-400 text-gray-900 px-5 py-2 rounded-full font-bold shadow-xl animate-pulse">
-              <div className="flex items-center gap-2 text-sm">
-                <TrendingUp className="w-4 h-4" />
-                New Arrivals!
-              </div>
+            <div className="pointer-events-none absolute -right-6 bottom-4 hidden h-[220px] w-[44%] lg:block">
+              <VisualTile className="absolute bottom-4 left-3 h-32 w-32 -rotate-6 bg-white" icon={Package} label="Buy it now" />
+              <VisualTile className="absolute left-36 top-0 h-40 w-40 rotate-3 bg-[#032F24] text-white" icon={Gavel} label="Live auctions" dark />
+              <VisualTile className="absolute bottom-0 right-4 h-28 w-28 rotate-6 bg-white" icon={Heart} label="Community" />
             </div>
           </div>
         </div>
       </div>
-
-      <div className="absolute bottom-0 left-0 right-0">
-        <svg viewBox="0 0 1440 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M0 120L60 105C120 90 240 60 360 45C480 30 600 30 720 37.5C840 45 960 60 1080 67.5C1200 75 1320 75 1380 75L1440 75V120H1380C1320 120 1200 120 1080 120C960 120 840 120 720 120C600 120 480 120 360 120C240 120 120 120 60 120H0Z" fill="white"/>
-        </svg>
-      </div>
     </section>
+  );
+}
+
+interface VisualTileProps {
+  className: string;
+  icon: typeof Package;
+  label: string;
+  dark?: boolean;
+}
+
+function VisualTile({ className, icon: Icon, label, dark = false }: VisualTileProps) {
+  return (
+    <div className={`${className} flex flex-col items-center justify-center rounded-3xl shadow-xl`}>
+      <span className={`flex h-12 w-12 items-center justify-center rounded-full ${dark ? 'bg-[#9BEC2D] text-[#032F24]' : 'bg-emerald-100 text-emerald-800'}`}><Icon className="h-6 w-6" /></span>
+      <span className="mt-3 text-xs font-black">{label}</span>
+    </div>
   );
 }

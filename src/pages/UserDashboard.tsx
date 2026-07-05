@@ -1,16 +1,24 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Package, DollarSign, Clock, CheckCircle, Plus, ShoppingBag, Tag, Eye } from 'lucide-react';
+import {
+  AlertTriangle, CheckCircle2, Clock, DollarSign, Eye, Gavel,
+  Package, ShoppingBag, Tag, Timer, Truck, XCircle,
+} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import QuickStatsCard from '../components/QuickStatsCard';
+import AuctionCountdown from '../components/auction/AuctionCountdown';
 
-interface DashboardStats {
-  totalSubmissions: number;
-  pendingSubmissions: number;
-  approvedSubmissions: number;
-  totalRevenue: number;
-  totalOrders: number;
+interface SellerStats {
+  activeListings: number;
+  liveAuctions: number;
+  pendingReview: number;
+  salesRevenue: number;
+}
+
+interface AttentionItems {
+  ordersToShip: number;
+  auctionsAwaitingPayment: number;
+  rejectedSubmissions: number;
 }
 
 interface Submission {
@@ -21,40 +29,30 @@ interface Submission {
   status: string;
   created_at: string;
   images: string[];
-  product_id?: string;
+  product_id?: string | null;
 }
 
-interface Order {
+interface SellerAuction {
   id: string;
-  total_amount: number;
+  title: string;
   status: string;
-  payment_status: string;
-  created_at: string;
-  order_items: {
-    quantity: number;
-    price: number;
-    products: {
-      id: string;
-      title: string;
-      image_url: string;
-    };
-  }[];
+  starting_price: number;
+  current_price: number | null;
+  bid_count: number;
+  starts_at: string;
+  ends_at: string;
+  images: string[];
+  product_id: string | null;
 }
 
 export default function UserDashboard() {
   const { user, openAuthModal } = useAuth();
   const navigate = useNavigate();
-  const [stats, setStats] = useState<DashboardStats>({
-    totalSubmissions: 0,
-    pendingSubmissions: 0,
-    approvedSubmissions: 0,
-    totalRevenue: 0,
-    totalOrders: 0,
-  });
-  const [submissions, setSubmissions] = useState<Submission[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [stats, setStats] = useState<SellerStats>({ activeListings: 0, liveAuctions: 0, pendingReview: 0, salesRevenue: 0 });
+  const [attention, setAttention] = useState<AttentionItems>({ ordersToShip: 0, auctionsAwaitingPayment: 0, rejectedSubmissions: 0 });
+  const [recentSubmissions, setRecentSubmissions] = useState<Submission[]>([]);
+  const [liveAuctions, setLiveAuctions] = useState<SellerAuction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
 
   useEffect(() => {
     if (!user) {
@@ -66,53 +64,66 @@ export default function UserDashboard() {
   }, [user, navigate]);
 
   const loadDashboardData = async () => {
+    if (!user) return;
     try {
       setLoading(true);
 
-      const [submissionsResponse, ordersResponse] = await Promise.all([
+      const [statusesRes, recentRes, auctionsRes, salesRes, toShipRes] = await Promise.all([
+        // Tiny payload: statuses only, for exact counts
+        supabase.from('product_submissions').select('status').eq('user_id', user.id),
         supabase
           .from('product_submissions')
-          .select('*, product_id')
-          .eq('user_id', user?.id)
-          .order('created_at', { ascending: false }),
-
-        supabase
-          .from('orders')
-          .select(`
-            *,
-            order_items (
-              quantity,
-              price,
-              products (
-                id,
-                title,
-                image_url
-              )
-            )
-          `)
-          .eq('user_id', user?.id)
+          .select('id, title, submission_type, price, status, created_at, images, product_id')
+          .eq('user_id', user.id)
           .order('created_at', { ascending: false })
+          .limit(8),
+        supabase
+          .from('auctions')
+          .select('id, title, status, starting_price, current_price, bid_count, starts_at, ends_at, images, product_id')
+          .eq('seller_id', user.id)
+          .is('removed_at', null)
+          .order('created_at', { ascending: false }),
+        // Real money: only items from orders that were actually paid
+        supabase.from('order_items').select('price, quantity, orders!inner(payment_status)').eq('seller_id', user.id).eq('orders.payment_status', 'paid'),
+        // Paid orders not yet shipped (status values vary across legacy
+        // flows, so decide by payment + tracking instead)
+        supabase.from('order_items').select('order_id, orders!inner(status, tracking_number, confirmed_by_buyer)').eq('seller_id', user.id).eq('orders.payment_status', 'paid'),
       ]);
 
-      const submissions = submissionsResponse.data || [];
-      const orders = ordersResponse.data || [];
-
-      setSubmissions(submissions);
-      setOrders(orders);
-
-      const pending = submissions.filter(s => s.status === 'pending').length;
-      const approved = submissions.filter(s => s.status === 'approved').length;
-      const revenue = submissions
-        .filter(s => s.status === 'approved')
-        .reduce((sum, s) => sum + parseFloat(s.price.toString()), 0);
+      const statuses = (statusesRes.data || []) as { status: string }[];
+      const auctions = (auctionsRes.data || []) as SellerAuction[];
+      const pendingSubmissions = statuses.filter((s) => s.status === 'pending').length;
+      const approvedSubmissions = statuses.filter((s) => s.status === 'approved').length;
+      const rejectedSubmissions = statuses.filter((s) => s.status === 'rejected').length;
+      const live = auctions.filter((a) => ['active', 'scheduled'].includes(a.status));
+      const pendingAuctions = auctions.filter((a) => a.status === 'pending_ai_review').length;
+      const awaitingPayment = auctions.filter((a) => a.status === 'awaiting_payment').length;
+      const revenue = ((salesRes.data || []) as { price: number; quantity: number }[])
+        .reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0);
+      interface ToShipOrder { status: string; tracking_number: string | null; confirmed_by_buyer: boolean }
+      const toShipRows = (toShipRes.data || []) as unknown as { order_id: string; orders: ToShipOrder | ToShipOrder[] }[];
+      const ordersToShip = new Set(
+        toShipRows
+          .filter((r) => {
+            // many-to-one embed: PostgREST returns an object, but the
+            // generated types say array — handle both
+            const order = Array.isArray(r.orders) ? r.orders[0] : r.orders;
+            return order && !order.tracking_number
+              && !order.confirmed_by_buyer
+              && !['delivered', 'cancelled'].includes(order.status);
+          })
+          .map((r) => r.order_id)
+      ).size;
 
       setStats({
-        totalSubmissions: submissions.length,
-        pendingSubmissions: pending,
-        approvedSubmissions: approved,
-        totalRevenue: revenue,
-        totalOrders: orders.length,
+        activeListings: approvedSubmissions,
+        liveAuctions: live.length,
+        pendingReview: pendingSubmissions + pendingAuctions,
+        salesRevenue: revenue,
       });
+      setAttention({ ordersToShip, auctionsAwaitingPayment: awaitingPayment, rejectedSubmissions });
+      setRecentSubmissions((recentRes.data || []) as Submission[]);
+      setLiveAuctions(live.slice(0, 5));
     } catch (error) {
       console.error('Error loading dashboard data:', error);
     } finally {
@@ -120,274 +131,244 @@ export default function UserDashboard() {
     }
   };
 
-  const filteredSubmissions = submissions.filter(submission => {
-    if (activeTab === 'all') return true;
-    return submission.status === activeTab;
-  });
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending':
-        return 'bg-yellow-100 text-yellow-800';
+        return 'bg-[#FFF4CC] text-[#735400]';
       case 'approved':
-      case 'completed':
-      case 'paid':
-        return 'bg-green-100 text-green-800';
+        return 'bg-[#E4F7C9] text-[#07513B]';
       case 'rejected':
-      case 'cancelled':
-      case 'failed':
         return 'bg-red-100 text-red-800';
-      case 'processing':
-        return 'bg-blue-100 text-blue-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
   };
 
-  const getStatusText = (status: string) => {
-    return status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
-  };
+  const getStatusText = (status: string) => status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ');
 
   const getSubmissionTypeText = (type: string) => {
     switch (type) {
-      case 'donation':
-        return 'Donation';
-      case 'symbolic_sale':
-        return 'Symbolic Sale';
-      case 'public_sale':
-        return 'Public Sale';
-      default:
-        return type;
+      case 'donation': return 'Donation';
+      case 'symbolic_sale': return 'Symbolic Sale';
+      case 'public_sale': return 'Public Sale';
+      default: return type;
     }
   };
 
+  const formatDate = (value: string) =>
+    new Date(value).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+
+  const attentionCount = attention.ordersToShip + attention.auctionsAwaitingPayment + attention.rejectedSubmissions;
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="flex min-h-[70vh] items-center justify-center bg-gray-50">
+        <div className="h-11 w-11 animate-spin rounded-full border-2 border-gray-200 border-t-[#07513B]" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-teal-50/30 pb-24 lg:pb-8">
-      <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-4 lg:py-8">
-        <div className="mb-4 lg:mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-start lg:items-center lg:justify-between gap-3 sm:gap-4">
-            <div className="flex-1 min-w-0">
-              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent mb-1 lg:mb-2 truncate">Dashboard</h1>
-              <p className="text-xs sm:text-sm lg:text-base text-gray-600 truncate">Welcome back, {user?.user_metadata?.full_name || user?.email}</p>
+    <main className="min-h-screen bg-gray-50 pb-24 lg:pb-12">
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-[#07513B]">Seller center</p>
+              <h1 className="mt-2 text-3xl font-black tracking-tight text-gray-950 sm:text-4xl">Seller dashboard</h1>
+              <p className="mt-2 truncate text-sm text-gray-500">Welcome back, {user?.user_metadata?.full_name || user?.email}</p>
             </div>
-            <div className="flex gap-2 sm:gap-3">
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
               <button
-                onClick={() => navigate('/my-products')}
-                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 sm:gap-2 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white px-3 sm:px-4 lg:px-6 py-2.5 sm:py-2 lg:py-3 rounded-lg sm:rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl active:scale-95 text-xs sm:text-sm lg:text-base"
+                onClick={() => navigate('/buyer-orders')}
+                className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[#CFE8AC] bg-[#F2FAE8] px-4 text-sm font-bold text-[#07513B] transition hover:bg-[#E4F7C9]"
               >
-                <Package className="w-4 h-4 sm:w-4 sm:h-4 lg:w-5 lg:h-5" />
-                <span className="whitespace-nowrap">Manage Products</span>
+                <ShoppingBag className="w-4 h-4" />
+                My purchases
               </button>
               <button
-                onClick={() => navigate('/orders')}
-                className="flex-1 sm:flex-initial hidden xs:flex items-center justify-center gap-1.5 sm:gap-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-3 sm:px-4 lg:px-6 py-2.5 sm:py-2 lg:py-3 rounded-lg sm:rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl active:scale-95 text-xs sm:text-sm lg:text-base"
+                onClick={() => navigate('/submit-product')}
+                className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[#9BEC2D] bg-[#E4F7C9] px-4 text-sm font-bold text-[#07513B] transition hover:bg-[#D6F4AA]"
               >
-                <ShoppingBag className="w-4 h-4 sm:w-4 sm:h-4 lg:w-5 lg:h-5" />
-                <span className="whitespace-nowrap">View Orders</span>
+                <Tag className="w-4 h-4" />
+                Sell an item
               </button>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 lg:gap-4 mb-4 lg:mb-6 xl:mb-8">
-          <div onClick={() => navigate('/my-products')} className="cursor-pointer">
-            <QuickStatsCard
-              icon={Package}
-              label="My Products"
-              value={stats.totalSubmissions}
-              gradient="from-red-500 to-rose-600"
-              iconColor="text-white"
-            />
-          </div>
-
-          <div
-            onClick={() => {
-              navigate('/my-products');
-              setTimeout(() => {
-                const pendingButton = document.querySelector('[data-tab="pending"]') as HTMLElement;
-                if (pendingButton) pendingButton.click();
-              }, 100);
-            }}
-            className="cursor-pointer"
+        {/* Stats — one honest source each */}
+        <section aria-label="Seller statistics" className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <button
+            type="button"
+            onClick={() => navigate('/my-products?tab=approved')}
+            className="flex items-center gap-3 rounded-2xl border border-[#CFE8AC] bg-[#F2FAE8] p-4 text-left transition hover:border-[#9BEC2D] hover:shadow-sm"
           >
-            <QuickStatsCard
-              icon={Clock}
-              label="Pending"
-              value={stats.pendingSubmissions}
-              gradient="from-yellow-500 to-amber-600"
-              iconColor="text-white"
-            />
-          </div>
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-[#07513B]"><Package className="h-5 w-5" /></span>
+            <span className="min-w-0">
+              <span className="block text-xs font-bold text-[#07513B]/70">Active listings</span>
+              <span className="mt-0.5 block text-2xl font-black text-[#032F24]">{stats.activeListings}</span>
+            </span>
+          </button>
 
-          <div
-            onClick={() => {
-              navigate('/my-products');
-              setTimeout(() => {
-                const approvedButton = document.querySelector('[data-tab="approved"]') as HTMLElement;
-                if (approvedButton) approvedButton.click();
-              }, 100);
-            }}
-            className="cursor-pointer"
+          <button
+            type="button"
+            onClick={() => navigate('/my-auctions')}
+            className="flex items-center gap-3 rounded-2xl border border-[#BFE89A] bg-[#E4F7C9] p-4 text-left transition hover:border-[#9BEC2D] hover:shadow-sm"
           >
-            <QuickStatsCard
-              icon={CheckCircle}
-              label="Approved"
-              value={stats.approvedSubmissions}
-              gradient="from-green-500 to-emerald-600"
-              iconColor="text-white"
-            />
-          </div>
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/80 text-[#07513B]"><Gavel className="h-5 w-5" /></span>
+            <span className="min-w-0">
+              <span className="block text-xs font-bold text-[#07513B]/70">Live auctions</span>
+              <span className="mt-0.5 block text-2xl font-black text-[#032F24]">{stats.liveAuctions}</span>
+            </span>
+          </button>
 
-          <div onClick={() => navigate('/seller-orders')} className="cursor-pointer">
-            <QuickStatsCard
-              icon={DollarSign}
-              label="Revenue"
-              value={`$${stats.totalRevenue.toFixed(0)}`}
-              gradient="from-blue-500 to-cyan-600"
-              iconColor="text-white"
-            />
-          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/my-products?tab=pending')}
+            className="flex items-center gap-3 rounded-2xl border border-[#E7D185] bg-[#FFF4CC] p-4 text-left transition hover:border-[#D8B94B] hover:shadow-sm"
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/80 text-[#8A6500]"><Clock className="h-5 w-5" /></span>
+            <span className="min-w-0">
+              <span className="block text-xs font-bold text-[#735400]/75">Pending review</span>
+              <span className="mt-0.5 block text-2xl font-black text-[#5A4300]">{stats.pendingReview}</span>
+            </span>
+          </button>
 
-          <div onClick={() => navigate('/orders')} className="cursor-pointer col-span-2 md:col-span-1">
-            <QuickStatsCard
-              icon={ShoppingBag}
-              label="My Orders"
-              value={stats.totalOrders}
-              gradient="from-purple-500 to-pink-600"
-              iconColor="text-white"
-            />
-          </div>
-        </div>
+          <button
+            type="button"
+            onClick={() => navigate('/seller-orders')}
+            className="flex items-center gap-3 rounded-2xl border border-[#C7E5D8] bg-[#EEF8F4] p-4 text-left transition hover:border-[#8FCDB8] hover:shadow-sm"
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-[#07513B]"><DollarSign className="h-5 w-5" /></span>
+            <span className="min-w-0">
+              <span className="block text-xs font-bold text-[#07513B]/70">Sales</span>
+              <span className="mt-0.5 block truncate text-2xl font-black text-[#032F24]">${stats.salesRevenue.toFixed(0)}</span>
+            </span>
+          </button>
+        </section>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 lg:gap-6">
-          <div className="bg-white rounded-xl lg:rounded-2xl shadow-lg border border-gray-100">
-            <div className="p-3 sm:p-4 lg:p-6 border-b border-gray-200">
-              <div className="flex flex-col xs:flex-row justify-between items-start xs:items-center gap-2 sm:gap-3 lg:gap-4 mb-3 sm:mb-4">
-                <h2 className="text-base sm:text-lg lg:text-xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">My Submitted Products</h2>
-                <button
-                  onClick={() => navigate('/submit-product')}
-                  className="w-full xs:w-auto flex items-center justify-center gap-1.5 sm:gap-2 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl text-xs sm:text-sm active:scale-95"
-                >
-                  <Tag className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span>Sell Product</span>
-                </button>
-              </div>
-
-              <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-                {(['all', 'pending', 'approved', 'rejected'] as const).map((tab) => (
+        {/* Needs your attention */}
+        <section className="mb-8 lg:mb-10" aria-labelledby="attention-heading">
+          {attentionCount > 0 ? (
+            <div className="rounded-2xl border border-[#CFE8AC] bg-[#F2FAE8] p-4 sm:p-5">
+              <h2 id="attention-heading" className="mb-4 flex items-center gap-2 text-lg font-black text-[#032F24]">
+                <AlertTriangle className="h-5 w-5 text-[#9A6B00]" />
+                Needs your attention
+              </h2>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {attention.ordersToShip > 0 && (
                   <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl font-medium transition-all duration-200 whitespace-nowrap text-xs sm:text-sm ${
-                      activeTab === tab
-                        ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-lg'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:scale-95'
-                    }`}
+                    onClick={() => navigate('/seller-orders')}
+                    className="flex items-center gap-3 rounded-2xl border border-[#CFE8AC] bg-white p-4 text-left transition hover:border-[#9BEC2D]"
                   >
-                    {tab === 'all' ? 'All' : tab === 'pending' ? 'Pending' : tab === 'approved' ? 'Approved' : 'Rejected'}
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FFF4CC] text-[#735400]"><Truck className="h-5 w-5" /></span>
+                    <span>
+                      <span className="block text-sm font-bold text-gray-900">{attention.ordersToShip} order{attention.ordersToShip > 1 ? 's' : ''} to ship</span>
+                      <span className="block text-xs text-gray-500">Paid and waiting for shipment</span>
+                    </span>
                   </button>
-                ))}
+                )}
+                {attention.auctionsAwaitingPayment > 0 && (
+                  <button
+                    onClick={() => navigate('/my-auctions')}
+                    className="flex items-center gap-3 rounded-2xl border border-[#CFE8AC] bg-white p-4 text-left transition hover:border-[#9BEC2D]"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F2FAE8] text-[#07513B]"><Timer className="h-5 w-5" /></span>
+                    <span>
+                      <span className="block text-sm font-bold text-gray-900">{attention.auctionsAwaitingPayment} auction{attention.auctionsAwaitingPayment > 1 ? 's' : ''} sold</span>
+                      <span className="block text-xs text-gray-500">Waiting for the winner's payment</span>
+                    </span>
+                  </button>
+                )}
+                {attention.rejectedSubmissions > 0 && (
+                  <button
+                    onClick={() => navigate('/my-products?tab=rejected')}
+                    className="flex items-center gap-3 rounded-2xl border border-red-200 bg-white p-4 text-left transition hover:border-red-400"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600"><XCircle className="h-5 w-5" /></span>
+                    <span>
+                      <span className="block text-sm font-bold text-gray-900">{attention.rejectedSubmissions} rejected listing{attention.rejectedSubmissions > 1 ? 's' : ''}</span>
+                      <span className="block text-xs text-gray-500">Review and resubmit</span>
+                    </span>
+                  </button>
+                )}
               </div>
             </div>
+          ) : (
+            <div className="flex items-center gap-3 rounded-2xl border border-[#CFE8AC] bg-[#F2FAE8] p-4 text-[#07513B]">
+              <CheckCircle2 className="h-5 w-5 shrink-0" />
+              <p className="text-sm font-bold">All caught up — nothing needs your attention right now.</p>
+            </div>
+          )}
+        </section>
 
-            <div className="p-3 sm:p-4 lg:p-6 max-h-[500px] sm:max-h-[600px] overflow-y-auto">
-              {filteredSubmissions.length === 0 ? (
-                <div className="text-center py-6 sm:py-8">
-                  <div className="relative mb-3 sm:mb-4">
-                    <div className="absolute inset-0 bg-gradient-to-br from-teal-400/20 to-emerald-400/20 rounded-full blur-2xl" />
-                    <div className="relative bg-gradient-to-br from-teal-50 to-emerald-50 rounded-full p-3 sm:p-4 w-fit mx-auto">
-                      <Package className="w-10 h-10 sm:w-12 sm:h-12 text-teal-600" />
-                    </div>
-                  </div>
-                  <p className="text-gray-900 font-semibold text-sm mb-1.5 sm:mb-2">No Submitted Products</p>
-                  <p className="text-gray-500 text-xs mb-3 sm:mb-4">Start by selling your first product</p>
+        {/* Two columns: recent submissions + live auctions */}
+        <section aria-labelledby="activity-heading">
+          <div className="mb-5">
+            <h2 id="activity-heading" className="text-2xl font-black tracking-tight text-gray-950 sm:text-3xl">Recent activity</h2>
+            <p className="mt-1 text-sm text-gray-500">Manage your latest listings and live auctions.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
+          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+            <div className="flex items-center justify-between border-b border-gray-200 p-5 sm:p-6">
+              <h3 className="flex items-center gap-2 text-lg font-black text-gray-950">
+                <Package className="h-5 w-5 text-[#07513B]" />
+                Recent listings
+              </h3>
+              <button onClick={() => navigate('/my-products')} className="text-sm font-bold text-gray-900 hover:underline">
+                See all
+              </button>
+            </div>
+            <div className="p-3 sm:p-4">
+              {recentSubmissions.length === 0 ? (
+                <div className="py-10 text-center">
+                  <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-[#F2FAE8]"><Package className="h-5 w-5 text-[#07513B]" /></div>
+                  <p className="mb-1 text-sm font-bold text-gray-950">No submitted products yet</p>
+                  <p className="mb-4 text-xs text-gray-500">Start by selling your first item.</p>
                   <button
                     onClick={() => navigate('/submit-product')}
-                    className="inline-flex items-center gap-1.5 sm:gap-2 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl text-xs sm:text-sm active:scale-95"
+                    className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[#9BEC2D] bg-[#E4F7C9] px-5 text-sm font-bold text-[#07513B] transition hover:bg-[#D6F4AA]"
                   >
-                    <Tag className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    Sell Product
+                    <Tag className="h-4 w-4" />
+                    Sell an item
                   </button>
                 </div>
               ) : (
-                <div className="space-y-2 sm:space-y-3">
-                  {filteredSubmissions.map((submission) => (
-                    <div
-                      key={submission.id}
-                      className="border border-gray-200 rounded-lg sm:rounded-xl p-2 sm:p-3 hover:shadow-lg hover:border-teal-200 transition-all duration-200"
-                    >
-                      <div className="flex gap-2 sm:gap-3">
-                        <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
-                          {submission.images && submission.images.length > 0 ? (
-                            <img
-                              src={submission.images[0]}
-                              alt={submission.title}
-                              className="w-full h-full object-cover"
-                            />
+                <div className="space-y-1">
+                  {recentSubmissions.slice(0, 4).map((submission) => (
+                    <div key={submission.id} className="rounded-xl p-3 transition hover:bg-[#F2FAE8]/70">
+                      <div className="flex gap-3">
+                        <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-gray-100">
+                          {submission.images?.length ? (
+                            <img src={submission.images[0]} alt={submission.title} className="h-full w-full object-cover" />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <Package className="w-5 h-5 sm:w-6 sm:h-6 text-gray-400" />
-                            </div>
+                            <div className="flex h-full w-full items-center justify-center"><Package className="h-5 w-5 text-gray-400" /></div>
                           )}
                         </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
-                            <div className="flex-1 min-w-0">
-                              <h3 className="font-semibold text-gray-900 text-xs sm:text-sm mb-1 truncate">{submission.title}</h3>
-                              <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 text-[10px] sm:text-xs text-gray-600">
-                                <span className="inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded bg-gray-100 whitespace-nowrap">
-                                  {getSubmissionTypeText(submission.submission_type)}
-                                </span>
-                                <span className="whitespace-nowrap">${parseFloat(submission.price.toString()).toFixed(2)}</span>
-                                <span className="text-gray-400 hidden xs:inline">•</span>
-                                <span className="hidden xs:inline whitespace-nowrap">{new Date(submission.created_at).toLocaleDateString('ar-SA')}</span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <h4 className="mb-1 truncate text-sm font-bold text-gray-950">{submission.title}</h4>
+                              <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-600">
+                                <span className="rounded bg-gray-100 px-1.5 py-0.5 whitespace-nowrap">{getSubmissionTypeText(submission.submission_type)}</span>
+                                <span>${Number(submission.price).toFixed(2)}</span>
+                                <span className="text-gray-400">•</span>
+                                <span className="whitespace-nowrap">{formatDate(submission.created_at)}</span>
                               </div>
                             </div>
-                            <span
-                              className={`inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-medium whitespace-nowrap shrink-0 ${getStatusColor(
-                                submission.status
-                              )}`}
-                            >
+                            <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold whitespace-nowrap ${getStatusColor(submission.status)}`}>
                               {getStatusText(submission.status)}
                             </span>
                           </div>
-                          {submission.status === 'approved' && (
+                          {submission.status === 'approved' && submission.product_id && (
                             <button
-                              onClick={async () => {
-                                let productId = submission.product_id;
-
-                                if (!productId) {
-                                  const { data, error } = await supabase
-                                    .from('products')
-                                    .select('id')
-                                    .ilike('title', submission.title.trim())
-                                    .maybeSingle();
-
-                                  if (error) {
-                                    console.error('Error finding product:', error);
-                                    return;
-                                  }
-
-                                  productId = data?.id;
-                                }
-
-                                if (productId) {
-                                  navigate(`/product/${productId}`);
-                                }
-                              }}
-                              className="inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white px-3 py-1.5 rounded-md font-medium transition shadow-sm hover:shadow-md text-xs"
+                              onClick={() => navigate(`/product/${submission.product_id}`)}
+                              className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-[#07513B] hover:underline"
                             >
-                              <Eye className="w-3.5 h-3.5" />
-                              View Product
+                              <Eye className="h-3.5 w-3.5" />
+                              View product
                             </button>
                           )}
                         </div>
@@ -399,105 +380,61 @@ export default function UserDashboard() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl lg:rounded-2xl shadow-lg border border-gray-100">
-            <div className="p-3 sm:p-4 lg:p-6 border-b border-gray-200">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="p-1.5 sm:p-2 bg-gradient-to-br from-purple-100 to-pink-100 rounded-lg">
-                  <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
-                </div>
-                <h2 className="text-base sm:text-lg lg:text-xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">My Orders</h2>
-              </div>
-              <p className="text-xs sm:text-sm text-gray-500 mt-1">Track your purchase orders and their status</p>
+          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+            <div className="flex items-center justify-between border-b border-gray-200 p-5 sm:p-6">
+              <h3 className="flex items-center gap-2 text-lg font-black text-gray-950">
+                <Gavel className="h-5 w-5 text-[#07513B]" />
+                Live auctions
+              </h3>
+              <button onClick={() => navigate('/my-auctions')} className="text-sm font-bold text-gray-900 hover:underline">
+                See all
+              </button>
             </div>
-
-            <div className="p-3 sm:p-4 lg:p-6 max-h-[500px] sm:max-h-[600px] overflow-y-auto">
-              {orders.length === 0 ? (
-                <div className="text-center py-6 sm:py-8">
-                  <div className="relative mb-3 sm:mb-4">
-                    <div className="absolute inset-0 bg-gradient-to-br from-purple-400/20 to-pink-400/20 rounded-full blur-2xl" />
-                    <div className="relative bg-gradient-to-br from-purple-50 to-pink-50 rounded-full p-3 sm:p-4 w-fit mx-auto">
-                      <ShoppingBag className="w-10 h-10 sm:w-12 sm:h-12 text-purple-600" />
-                    </div>
-                  </div>
-                  <p className="text-gray-900 font-semibold text-sm mb-1.5 sm:mb-2">No Orders Yet</p>
-                  <p className="text-gray-500 text-xs mb-3 sm:mb-4">Start shopping to see your orders here</p>
+            <div className="p-3 sm:p-4">
+              {liveAuctions.length === 0 ? (
+                <div className="py-10 text-center">
+                  <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-[#F2FAE8]"><Gavel className="h-5 w-5 text-[#07513B]" /></div>
+                  <p className="mb-1 text-sm font-bold text-gray-950">No live auctions</p>
+                  <p className="mb-4 text-xs text-gray-500">Auctions can bring better prices for sought-after items.</p>
                   <button
-                    onClick={() => navigate('/')}
-                    className="inline-flex items-center gap-1.5 sm:gap-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg sm:rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl text-xs sm:text-sm active:scale-95"
+                    onClick={() => navigate('/submit-product?listing=auction')}
+                    className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[#9BEC2D] bg-[#E4F7C9] px-5 text-sm font-bold text-[#07513B] transition hover:bg-[#D6F4AA]"
                   >
-                    Browse Products
+                    <Gavel className="h-4 w-4" />
+                    Create Auction
                   </button>
                 </div>
               ) : (
-                <div className="space-y-2 sm:space-y-3">
-                  {orders.map((order) => (
+                <div className="space-y-1">
+                  {liveAuctions.slice(0, 4).map((auction) => (
                     <div
-                      key={order.id}
-                      className="border border-gray-200 rounded-lg sm:rounded-xl p-2.5 sm:p-3 lg:p-4 hover:shadow-lg hover:border-purple-200 transition-all duration-200"
+                      key={auction.id}
+                      onClick={() => auction.product_id && navigate(`/product/${auction.product_id}`)}
+                      className={`rounded-xl p-3 transition hover:bg-[#F2FAE8]/70 ${auction.product_id ? 'cursor-pointer' : ''}`}
                     >
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-semibold text-gray-900 text-sm">
-                              Order #{order.id.slice(0, 8)}
-                            </span>
-                            <span
-                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
-                                order.status
-                              )}`}
-                            >
-                              {getStatusText(order.status)}
+                      <div className="flex gap-3">
+                        <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-gray-100">
+                          {auction.images?.length ? (
+                            <img src={auction.images[0]} alt={auction.title} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center"><Gavel className="h-5 w-5 text-gray-400" /></div>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <h4 className="truncate text-sm font-bold text-gray-950">{auction.title}</h4>
+                            <span className="shrink-0 rounded-full bg-[#E4F7C9] px-2.5 py-1 text-[11px] font-black text-[#07513B] whitespace-nowrap">
+                              {auction.bid_count} bid{auction.bid_count === 1 ? '' : 's'}
                             </span>
                           </div>
-                          <p className="text-xs text-gray-600">
-                            {new Date(order.created_at).toLocaleDateString('en-US', {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric'
-                            })}
+                          <p className="mt-1 text-base font-black text-gray-950">
+                            ${Number(auction.current_price ?? auction.starting_price).toFixed(2)}
+                            <span className="ml-1 text-xs font-medium text-gray-500">{auction.bid_count > 0 ? 'current bid' : 'starting price'}</span>
                           </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-base font-bold text-gray-900">
-                            ${parseFloat(order.total_amount.toString()).toFixed(2)}
-                          </p>
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(
-                              order.payment_status
-                            )}`}
-                          >
-                            {getStatusText(order.payment_status)}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        {order.order_items?.map((item, index) => (
-                          <div key={index} className="flex gap-2 items-center bg-gray-50 p-2 rounded">
-                            <div className="w-12 h-12 bg-gray-200 rounded overflow-hidden flex-shrink-0">
-                              {item.products?.image_url ? (
-                                <img
-                                  src={item.products.image_url}
-                                  alt={item.products.title}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center">
-                                  <Package className="w-5 h-5 text-gray-400" />
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium text-gray-900 text-sm truncate">
-                                {item.products?.title || 'Product'}
-                              </p>
-                              <p className="text-xs text-gray-600">Qty: {item.quantity}</p>
-                            </div>
-                            <p className="font-semibold text-gray-900 text-sm">
-                              ${parseFloat(item.price.toString()).toFixed(2)}
-                            </p>
+                          <div className="mt-1 text-xs">
+                            <AuctionCountdown startsAt={auction.starts_at} endsAt={auction.ends_at} status={auction.status} compact palette="brand" />
                           </div>
-                        ))}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -506,7 +443,8 @@ export default function UserDashboard() {
             </div>
           </div>
         </div>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }

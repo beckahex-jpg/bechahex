@@ -5,7 +5,7 @@ This guide will help you complete the email system setup for your Beckah Marketp
 ## Prerequisites
 
 - ✅ Supabase project already set up
-- ✅ RESEND_API_KEY obtained: `re_2chjjTmJ_EL69548uPL7a22tBHfpuYo9R`
+- ✅ RESEND_API_KEY obtained and stored only in Supabase secrets
 - ✅ Sender email configured: `info@beckahex.org`
 
 ## Step 1: Add Secrets to Supabase Edge Functions
@@ -18,7 +18,7 @@ You need to add the following secrets to your Supabase project:
 
    | Secret Name | Value |
    |------------|-------|
-   | `RESEND_API_KEY` | `re_2chjjTmJ_EL69548uPL7a22tBHfpuYo9R` |
+   | `RESEND_API_KEY` | `your-resend-api-key` |
    | `FROM_EMAIL` | `info@beckahex.org` |
    | `SITE_URL` | `https://beckahex.org` |
 
