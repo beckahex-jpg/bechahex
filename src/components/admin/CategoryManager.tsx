@@ -15,8 +15,9 @@ interface CategoryManagerProps {
   searchQuery?: string;
 }
 
-export default function CategoryManager({ searchQuery = '' }: CategoryManagerProps) {
+export default function CategoryManager({ searchQuery: externalSearchQuery = '' }: CategoryManagerProps) {
   const [categories, setCategories] = useState<Category[]>([]);
+  const [searchQuery, setSearchQuery] = useState(externalSearchQuery);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -36,6 +37,10 @@ export default function CategoryManager({ searchQuery = '' }: CategoryManagerPro
   useEffect(() => {
     loadCategories();
   }, []);
+
+  useEffect(() => {
+    setSearchQuery(externalSearchQuery);
+  }, [externalSearchQuery]);
 
   const loadCategories = async () => {
     try {

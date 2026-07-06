@@ -46,7 +46,7 @@ interface SellerAuction {
 }
 
 export default function UserDashboard() {
-  const { user, openAuthModal } = useAuth();
+  const { user, loading: authLoading, openAuthModal } = useAuth();
   const navigate = useNavigate();
   const [stats, setStats] = useState<SellerStats>({ activeListings: 0, liveAuctions: 0, pendingReview: 0, salesRevenue: 0 });
   const [attention, setAttention] = useState<AttentionItems>({ ordersToShip: 0, auctionsAwaitingPayment: 0, rejectedSubmissions: 0 });
@@ -55,13 +55,16 @@ export default function UserDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Don't redirect while the session is still restoring (hard refresh):
+    // `user` is null until Supabase finishes loading it.
+    if (authLoading) return;
     if (!user) {
       openAuthModal('Please sign in to view your dashboard');
       navigate('/');
       return;
     }
     loadDashboardData();
-  }, [user, navigate]);
+  }, [user, authLoading, navigate]);
 
   const loadDashboardData = async () => {
     if (!user) return;

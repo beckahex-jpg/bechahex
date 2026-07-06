@@ -24,7 +24,7 @@ interface UserStats {
 }
 
 export default function ProfilePage() {
-  const { user, openAuthModal } = useAuth();
+  const { user, loading: authLoading, openAuthModal } = useAuth();
   const { showSuccess, showError } = useToast();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -54,13 +54,15 @@ export default function ProfilePage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
+    // Wait for the session to restore before deciding (hard-refresh race).
+    if (authLoading) return;
     if (!user) {
       openAuthModal('Please sign in to view your profile');
       navigate('/');
       return;
     }
     loadProfile();
-  }, [user, navigate]);
+  }, [user, authLoading, navigate]);
 
   const loadProfile = async () => {
     if (!user) return;

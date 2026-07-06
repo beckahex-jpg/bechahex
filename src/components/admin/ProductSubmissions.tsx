@@ -14,6 +14,7 @@ interface Submission {
   seller_symbolic_price: number | null;
   submission_type: 'donation' | 'symbolic_sale' | 'public_sale';
   final_price: number | null;
+  quantity?: number | null;
   condition: string;
   images: string[];
   status: 'pending' | 'approved' | 'rejected';
@@ -301,7 +302,8 @@ export default function ProductSubmissions({ onSubmissionChange, searchQuery: ex
           condition: editedCondition,
           seller_id: selectedSubmission.user_id,
           status: 'available',
-          listing_type: 'fixed_price'
+          listing_type: 'fixed_price',
+          stock: Math.max(1, Number(selectedSubmission.quantity) || 1)
         };
 
         const { data: newProduct, error: productError } = await supabase
@@ -846,6 +848,13 @@ export default function ProductSubmissions({ onSubmissionChange, searchQuery: ex
                             <p className="font-bold text-emerald-600 mt-1 text-xl flex items-center gap-1">
                               <DollarSign className="w-5 h-5" />
                               ${selectedSubmission.price}
+                            </p>
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Quantity Listed</label>
+                            <p className="font-bold text-gray-900 mt-1 text-xl flex items-center gap-1">
+                              <Package className="w-5 h-5" />
+                              {Math.max(1, Number(selectedSubmission.quantity) || 1)}
                             </p>
                           </div>
                           {selectedSubmission.seller_symbolic_price !== null && selectedSubmission.seller_symbolic_price > 0 && (

@@ -128,7 +128,7 @@ interface Category {
 type TabType = 'overview' | 'submissions' | 'orders' | 'payments' | 'users' | 'products' | 'categories';
 
 export default function AdminDashboard() {
-  const { user, signOut } = useAuth();
+  const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -178,12 +178,14 @@ export default function AdminDashboard() {
   });
 
   useEffect(() => {
+    // Wait for the session to restore before deciding (hard-refresh race).
+    if (authLoading) return;
     if (!user) {
       navigate('/');
       return;
     }
     checkAdminAndLoadData();
-  }, [user, navigate]);
+  }, [user, authLoading, navigate]);
 
   useEffect(() => {
     setSearchQuery('');

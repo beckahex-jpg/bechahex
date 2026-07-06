@@ -14,6 +14,7 @@ interface CartItem {
     images: string[];
     condition: string;
     status: string;
+    stock: number | null;
     seller_id: string;
   };
 }
@@ -76,6 +77,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
             images,
             condition,
             status,
+            stock,
             seller_id
           )
         `)
@@ -100,26 +102,45 @@ export function CartProvider({ children }: { children: ReactNode }) {
     try {
       const { data: product } = await supabase
         .from('products')
-        .select('listing_type')
+        .select('listing_type, status, stock')
         .eq('id', productId)
         .maybeSingle();
 
-      if (product?.listing_type === 'auction') {
+      if (!product || product.status !== 'available') {
+        alert('This product is no longer available');
+        return;
+      }
+
+      if (product.listing_type === 'auction') {
         alert('Auction items cannot be added to the cart. Place a bid on the auction instead.');
         return;
       }
 
+      const stock = Math.max(0, Number(product.stock ?? 1));
       const existingItem = items.find(item => item.product_id === productId);
+      const requested = (existingItem?.quantity || 0) + quantity;
+
+      if (stock === 0) {
+        alert('This product is sold out');
+        return;
+      }
+
+      if (requested > stock) {
+        alert(`Only ${stock} unit(s) available for this product`);
+        if (!existingItem || existingItem.quantity >= stock) return;
+      }
+
+      const cappedQuantity = Math.min(requested, stock);
 
       if (existingItem) {
-        await updateQuantity(productId, existingItem.quantity + quantity);
+        await updateQuantity(productId, cappedQuantity);
       } else {
         const { error } = await supabase
           .from('cart_items')
           .insert({
             user_id: user.id,
             product_id: productId,
-            quantity
+            quantity: cappedQuantity
           });
 
         if (error) throw error;
@@ -141,6 +162,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (quantity <= 0) {
       await removeFromCart(productId);
       return;
+    }
+
+    const item = items.find(cartItem => cartItem.product_id === productId);
+    const stock = item ? Math.max(0, Number(item.products.stock ?? 1)) : null;
+    if (stock !== null && quantity > stock) {
+      alert(`Only ${stock} unit(s) available for this product`);
+      quantity = Math.max(1, stock);
+      if (item && item.quantity === quantity) return;
     }
 
     try {

@@ -22,7 +22,7 @@ interface WinnerOfferWithAuction {
 }
 
 export default function MyAuctionsPage() {
-  const { user, openAuthModal } = useAuth();
+  const { user, loading: authLoading, openAuthModal } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [selling, setSelling] = useState<Auction[]>([]);
@@ -59,13 +59,15 @@ export default function MyAuctionsPage() {
   }, [user]);
 
   useEffect(() => {
+    // Wait for the session to restore before deciding (hard-refresh race).
+    if (authLoading) return;
     if (!user) {
       openAuthModal('Please sign in to view your auctions');
       navigate('/products');
       return;
     }
     load();
-  }, [load, navigate, openAuthModal, user]);
+  }, [load, navigate, openAuthModal, user, authLoading]);
 
   const uniqueBidAuctions = useMemo(() => {
     const seen = new Set<string>();

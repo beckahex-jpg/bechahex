@@ -4,15 +4,17 @@ import { useAuth } from '../contexts/AuthContext';
 import SettingsPanel from '../components/settings/SettingsPanel';
 
 export default function SellerSettingsPage() {
-  const { user, openAuthModal } = useAuth();
+  const { user, loading: authLoading, openAuthModal } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Wait for the session to restore before deciding (hard-refresh race).
+    if (authLoading) return;
     if (!user) {
       openAuthModal('Please sign in to view settings');
       navigate('/');
     }
-  }, [user, navigate]);
+  }, [user, authLoading, navigate]);
 
   if (!user) return null;
 

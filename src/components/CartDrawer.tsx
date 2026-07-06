@@ -123,8 +123,9 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                           <span className="text-sm font-semibold px-2">{item.quantity}</span>
                           <button
                             onClick={() => updateQuantity(item.product_id, item.quantity + 1)}
+                            disabled={item.quantity >= Math.max(0, Number(item.products.stock ?? 1))}
                             aria-label={`Increase quantity for ${item.products.title}`}
-                            className="p-1.5 hover:bg-gray-100 rounded-r-lg transition"
+                            className="p-1.5 hover:bg-gray-100 rounded-r-lg transition disabled:opacity-30 disabled:hover:bg-white"
                           >
                             <Plus className="w-3 h-3" />
                           </button>

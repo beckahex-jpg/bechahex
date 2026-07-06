@@ -18,6 +18,7 @@ export interface FixedPriceProduct {
   image_url: string;
   images?: string[];
   status: string;
+  stock?: number | string | null;
   seller_id?: string | null;
   rating_avg?: string | number;
   rating_count?: number;
@@ -37,7 +38,9 @@ export default function FixedPriceDetailPage({ product }: { product: FixedPriceP
   const [addedToCart, setAddedToCart] = useState(false);
   const category = product.categories?.name || 'Marketplace';
   const isDonated = product.submission_type === 'donation';
-  const isUnavailable = product.status !== 'available';
+  const stockCount = Math.max(0, Math.floor(Number(product.stock ?? 1)) || 0);
+  const isSoldOut = product.status === 'sold' || stockCount <= 0;
+  const isUnavailable = product.status !== 'available' || isSoldOut;
   const favorited = isFavorite(product.id);
   const price = typeof product.price === 'string' ? Number(product.price) : product.price;
   const originalPrice = product.original_price
@@ -173,7 +176,7 @@ export default function FixedPriceDetailPage({ product }: { product: FixedPriceP
           <aside className="order-3 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-lg lg:col-span-2 lg:col-start-1 lg:row-start-3 xl:sticky xl:top-20 xl:col-span-1 xl:col-start-3 xl:row-span-2 xl:row-start-1">
             <div className="flex items-center justify-between bg-gray-900 px-4 py-3 text-white">
               <span className="flex items-center gap-2 text-sm font-black uppercase tracking-wide"><Tag className="h-4 w-4" />Fixed price</span>
-              <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${isUnavailable ? 'bg-red-500/20 text-red-100' : 'bg-green-500/20 text-green-100'}`}>{isUnavailable ? 'Unavailable' : 'Available'}</span>
+              <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${isUnavailable ? 'bg-red-500/20 text-red-100' : 'bg-green-500/20 text-green-100'}`}>{isSoldOut ? 'Sold out' : isUnavailable ? 'Unavailable' : 'Available'}</span>
             </div>
             <div className="space-y-4 p-4">
               <div>
@@ -182,7 +185,14 @@ export default function FixedPriceDetailPage({ product }: { product: FixedPriceP
               </div>
 
               <div className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-semibold ${isUnavailable ? 'bg-yellow-50 text-yellow-800' : 'bg-green-50 text-green-800'}`}>
-                {isUnavailable ? <Tag className="h-4 w-4" /> : <Check className="h-4 w-4" />}{isUnavailable ? 'This product is currently unavailable.' : 'In stock and ready to ship.'}
+                {isUnavailable ? <Tag className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+                {isSoldOut
+                  ? 'This product is sold out.'
+                  : isUnavailable
+                    ? 'This product is currently unavailable.'
+                    : stockCount <= 5
+                      ? `Only ${stockCount} left in stock — order soon.`
+                      : 'In stock and ready to ship.'}
               </div>
 
               <div>
@@ -191,7 +201,7 @@ export default function FixedPriceDetailPage({ product }: { product: FixedPriceP
                   <div className="flex h-11 flex-1 items-center justify-between overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
                     <button type="button" onClick={() => setQuantity((value) => Math.max(1, value - 1))} disabled={quantity === 1} aria-label="Decrease quantity" className="flex h-full w-11 items-center justify-center text-gray-600 transition hover:bg-gray-100 disabled:opacity-30"><Minus className="h-4 w-4" /></button>
                     <span className="font-bold text-gray-900">{quantity}</span>
-                    <button type="button" onClick={() => setQuantity((value) => value + 1)} aria-label="Increase quantity" className="flex h-full w-11 items-center justify-center text-gray-600 transition hover:bg-gray-100"><Plus className="h-4 w-4" /></button>
+                    <button type="button" onClick={() => setQuantity((value) => Math.min(Math.max(stockCount, 1), value + 1))} disabled={quantity >= stockCount} aria-label="Increase quantity" className="flex h-full w-11 items-center justify-center text-gray-600 transition hover:bg-gray-100 disabled:opacity-30"><Plus className="h-4 w-4" /></button>
                   </div>
                   <button type="button" onClick={handleFavorite} aria-label={favorited ? 'Remove from favorites' : 'Add to favorites'} className={`flex h-11 w-11 items-center justify-center rounded-xl border transition ${favorited ? 'border-red-300 bg-red-50 text-red-600' : 'border-gray-200 text-gray-600 hover:border-red-300 hover:text-red-600'}`}><Heart className={`h-5 w-5 ${favorited ? 'fill-current' : ''}`} /></button>
                   <button type="button" onClick={() => { void handleShare(); }} aria-label="Share product" className="flex h-11 w-11 items-center justify-center rounded-xl border border-gray-200 text-gray-600 transition hover:border-gray-400 hover:text-gray-900"><Share2 className="h-5 w-5" /></button>

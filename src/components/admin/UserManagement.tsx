@@ -36,8 +36,9 @@ interface UserManagementProps {
   searchQuery?: string;
 }
 
-export default function UserManagement({ searchQuery = '' }: UserManagementProps) {
+export default function UserManagement({ searchQuery: externalSearchQuery = '' }: UserManagementProps) {
   const [users, setUsers] = useState<User[]>([]);
+  const [searchQuery, setSearchQuery] = useState(externalSearchQuery);
   const [loading, setLoading] = useState(true);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
@@ -49,6 +50,10 @@ export default function UserManagement({ searchQuery = '' }: UserManagementProps
   useEffect(() => {
     fetchUsers();
   }, []);
+
+  useEffect(() => {
+    setSearchQuery(externalSearchQuery);
+  }, [externalSearchQuery]);
 
   const fetchUsers = async () => {
     try {

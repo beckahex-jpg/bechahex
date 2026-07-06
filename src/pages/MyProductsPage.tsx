@@ -56,7 +56,7 @@ interface Category {
 }
 
 export default function MyProductsPage() {
-  const { user, openAuthModal } = useAuth();
+  const { user, loading: authLoading, openAuthModal } = useAuth();
   const navigate = useNavigate();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,6 +102,8 @@ export default function MyProductsPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    // Wait for the session to restore before deciding (hard-refresh race).
+    if (authLoading) return;
     if (!user) {
       openAuthModal('Please sign in to view your products');
       navigate('/');
@@ -109,7 +111,7 @@ export default function MyProductsPage() {
     }
     loadProducts();
     fetchCategories();
-  }, [user, navigate]);
+  }, [user, authLoading, navigate]);
 
   const fetchCategories = async () => {
     try {

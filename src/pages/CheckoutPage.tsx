@@ -20,7 +20,7 @@ interface ShippingAddress {
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
-  const { user, openAuthModal } = useAuth();
+  const { user, loading: authLoading, openAuthModal } = useAuth();
   const { items, totalAmount, clearCart, updateQuantity, removeFromCart } = useCart();
   const [orderId, setOrderId] = useState('');
   const [loading, setLoading] = useState(false);
@@ -42,6 +42,8 @@ export default function CheckoutPage() {
   const finalTotal = totalAmount + shippingCost + tax;
 
   useEffect(() => {
+    // Wait for the session to restore before deciding (hard-refresh race).
+    if (authLoading) return;
     if (!user) {
       openAuthModal('Please sign in to complete your purchase');
       navigate('/');
@@ -54,7 +56,7 @@ export default function CheckoutPage() {
       return;
     }
     loadUserProfile();
-  }, [user, items, navigate, showPaymentOptions, paymentDone]);
+  }, [user, authLoading, items, navigate, showPaymentOptions, paymentDone]);
 
   const loadUserProfile = async () => {
     if (!user) return;
@@ -104,6 +106,33 @@ export default function CheckoutPage() {
     setLoading(true);
 
     try {
+      // Re-check live stock before creating the order; the sold-out product
+      // may have been bought since it was added to the cart.
+      const { data: liveProducts, error: stockError } = await supabase
+        .from('products')
+        .select('id, title, status, stock')
+        .in('id', items.map(item => item.product_id));
+
+      if (stockError) throw stockError;
+
+      const liveById = new Map((liveProducts || []).map(p => [p.id, p]));
+      for (const item of items) {
+        const live = liveById.get(item.product_id);
+        if (!live || live.status !== 'available') {
+          alert(`"${item.products.title}" is no longer available. Please remove it from your cart.`);
+          setLoading(false);
+          return;
+        }
+        const stock = Math.max(0, Number(live.stock ?? 1));
+        if (item.quantity > stock) {
+          alert(stock > 0
+            ? `Only ${stock} unit(s) of "${live.title}" are left in stock. Please adjust the quantity in your cart.`
+            : `"${live.title}" is sold out. Please remove it from your cart.`);
+          setLoading(false);
+          return;
+        }
+      }
+
       console.log('Saving shipping address to profile...');
       await supabase
         .from('profiles')

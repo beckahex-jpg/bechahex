@@ -30,16 +30,22 @@ interface ProductFormData {
   price: string;
   original_price: string;
   seller_symbolic_price: string;
+  quantity: string;
   submission_type: 'donation' | 'symbolic_sale' | 'public_sale';
   listing_type: ListingType;
   auction: AuctionFormValues;
   images: File[];
 }
 
+const parseQuantity = (value: string) => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : NaN;
+};
+
 const AUTOSAVE_KEY = 'product_submission_draft';
 
 export default function SubmitProduct() {
-  const { user, openAuthModal } = useAuth();
+  const { user, loading: authLoading, openAuthModal } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { showSuccess, showError, showWarning } = useToast();
@@ -56,6 +62,7 @@ export default function SubmitProduct() {
         const parsed = JSON.parse(saved);
         return {
           ...parsed,
+          quantity: parsed.quantity || '1',
           listing_type: parsed.listing_type || (searchParams.get('listing') === 'auction' ? 'auction' : 'fixed_price'),
           auction: { ...createDefaultAuctionValues(), ...(parsed.auction || {}) },
           images: []
@@ -69,6 +76,7 @@ export default function SubmitProduct() {
           price: '0',
           original_price: '',
           seller_symbolic_price: '',
+          quantity: '1',
           submission_type: 'donation',
           listing_type: searchParams.get('listing') === 'auction' ? 'auction' : 'fixed_price',
           auction: createDefaultAuctionValues(),
@@ -84,6 +92,7 @@ export default function SubmitProduct() {
       price: '0',
       original_price: '',
       seller_symbolic_price: '',
+      quantity: '1',
       submission_type: 'donation',
       listing_type: searchParams.get('listing') === 'auction' ? 'auction' : 'fixed_price',
       auction: createDefaultAuctionValues(),
@@ -92,6 +101,8 @@ export default function SubmitProduct() {
   });
 
   useEffect(() => {
+    // Wait for the session to restore before deciding (hard-refresh race).
+    if (authLoading) return;
     if (!user) {
       openAuthModal('Please sign in to sell products');
       navigate('/');
@@ -99,7 +110,7 @@ export default function SubmitProduct() {
     }
     loadCategories();
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [user, navigate]);
+  }, [user, authLoading, navigate]);
 
   useEffect(() => {
     if (formData.submission_type === 'donation') {
@@ -364,6 +375,7 @@ export default function SubmitProduct() {
         price: finalPrice,
         original_price: formData.original_price ? parseFloat(formData.original_price) : null,
         seller_symbolic_price: formData.seller_symbolic_price ? parseFloat(formData.seller_symbolic_price) : null,
+        quantity: parseQuantity(formData.quantity) || 1,
         submission_type: formData.submission_type,
         images: imageUrls,
         status: 'pending',
@@ -398,6 +410,11 @@ export default function SubmitProduct() {
     if (formData.category_id) completed++;
     total++;
 
+    if (formData.listing_type === 'fixed_price') {
+      if (parseQuantity(formData.quantity)) completed++;
+      total++;
+    }
+
     if (formData.listing_type === 'auction') {
       if (Number(formData.auction.startingPrice) > 0) completed++;
       if (Number(formData.auction.minimumBidIncrement) > 0) completed++;
@@ -426,6 +443,8 @@ export default function SubmitProduct() {
     if (formData.listing_type === 'auction') {
       return auctionValuesAreValid(formData.auction);
     }
+
+    if (!parseQuantity(formData.quantity)) return false;
 
     if (formData.submission_type === 'donation') {
       return formData.original_price && formData.original_price !== '0';
@@ -911,6 +930,28 @@ export default function SubmitProduct() {
                     </div>
                   )}
 
+                  {formData.listing_type === 'fixed_price' && (
+                    <div className="mt-4 bg-gray-50 border-2 border-gray-300 rounded-xl p-5">
+                      <label className="block text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                        Available Quantity
+                        <span className="text-red-600">*</span>
+                        {Boolean(parseQuantity(formData.quantity)) && <Check className="w-4 h-4 text-green-600" />}
+                      </label>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        value={formData.quantity}
+                        onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                        placeholder="1"
+                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      />
+                      <p className="text-sm text-gray-600 mt-2">
+                        How many units are you selling? The listing is removed from the marketplace automatically once every unit is sold.
+                      </p>
+                    </div>
+                  )}
+
                   {formData.listing_type === 'auction' && (
                     <>
                       <AuctionFields value={formData.auction} onChange={(auction) => setFormData({ ...formData, auction })} />
@@ -1011,6 +1052,9 @@ export default function SubmitProduct() {
                       {formData.listing_type === 'fixed_price' && formData.submission_type === 'public_sale' && (!formData.price || formData.price === '0') && (
                         <li>Enter sale price</li>
                       )}
+                      {formData.listing_type === 'fixed_price' && !parseQuantity(formData.quantity) && (
+                        <li>Enter available quantity (a whole number of 1 or more)</li>
+                      )}
                       {formData.listing_type === 'auction' && !auctionValuesAreValid(formData.auction) && (
                         <li>Complete valid auction pricing and timing (5 minutes to 30 days)</li>
                       )}
@@ -1023,7 +1067,7 @@ export default function SubmitProduct() {
 
           {showPreview && (
             <div className="hidden lg:block w-80 xl:w-96">
-              <div className="sticky top-6">
+              <div className="sticky top-20">
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                   <div className="bg-gradient-to-r from-gray-700 to-gray-900 px-4 py-4 text-white flex items-center justify-between">
                     <h3 className="font-bold">Live Preview</h3>

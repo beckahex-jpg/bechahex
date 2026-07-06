@@ -36,19 +36,29 @@ Deno.serve(async (req: Request) => {
     const productIds = [...new Set(items.map((item) => item.product_id))];
     const { data: products, error: productsError } = await admin
       .from("products")
-      .select("id, price, status")
+      .select("id, title, price, status, stock")
       .in("id", productIds);
     if (productsError) throw productsError;
 
-    const priceById = new Map<string, number>((products || []).map((p) => [p.id, Number(p.price)]));
+    const productById = new Map((products || []).map((p) => [p.id, p]));
 
     let subtotal = 0;
     for (const item of items) {
-      const price = priceById.get(item.product_id);
-      if (price === undefined || !Number.isFinite(price)) {
+      const product = productById.get(item.product_id);
+      const price = product ? Number(product.price) : NaN;
+      if (!product || product.status !== "available" || !Number.isFinite(price)) {
         return jsonResponse({ error: "A product in this order is no longer available" }, 409);
       }
-      subtotal += price * Number(item.quantity || 1);
+      const quantity = Number(item.quantity || 1);
+      const stock = Number(product.stock ?? 1);
+      if (Number.isFinite(stock) && quantity > stock) {
+        return jsonResponse({
+          error: stock > 0
+            ? `Only ${stock} unit(s) of "${product.title}" left in stock — please reduce the quantity`
+            : `"${product.title}" is sold out`,
+        }, 409);
+      }
+      subtotal += price * quantity;
     }
 
     const totalCents = toCents(subtotal * (1 + TAX_RATE));

@@ -94,7 +94,7 @@ function HoldPaymentForm({ paymentId, onDone }: { paymentId: string; onDone: (or
 
 export default function AuctionPaymentPage() {
   const { offerId } = useParams();
-  const { user, openAuthModal } = useAuth();
+  const { user, loading: authLoading, openAuthModal } = useAuth();
   const navigate = useNavigate();
   const [offer, setOffer] = useState<WinnerOffer | null>(null);
   const [loading, setLoading] = useState(true);
@@ -105,6 +105,8 @@ export default function AuctionPaymentPage() {
   const prepareStartedRef = useRef(false);
 
   useEffect(() => {
+    // Wait for the session to restore before deciding (hard-refresh race).
+    if (authLoading) return;
     if (!user) {
       openAuthModal('Please sign in to pay for your winning auction');
       navigate('/my-auctions');
@@ -121,7 +123,7 @@ export default function AuctionPaymentPage() {
         else setOffer(data as unknown as WinnerOffer | null);
         setLoading(false);
       });
-  }, [navigate, offerId, openAuthModal, user]);
+  }, [navigate, offerId, openAuthModal, user, authLoading]);
 
   const expired = offer ? new Date(offer.expires_at).getTime() <= Date.now() : false;
   const payable = Boolean(offer && !expired && ['offered', 'payment_started'].includes(offer.status));

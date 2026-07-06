@@ -26,7 +26,7 @@ interface DashboardStats {
 }
 
 export default function NewAdminDashboard() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -45,12 +45,16 @@ export default function NewAdminDashboard() {
   });
 
   useEffect(() => {
+    // Wait for the session to finish loading before deciding: on a hard
+    // refresh `user` is still null while Supabase restores the session, and
+    // redirecting then locks logged-in admins out of the page.
+    if (authLoading) return;
     if (!user) {
       navigate('/');
       return;
     }
     checkAdminStatus();
-  }, [user, navigate]);
+  }, [user, authLoading, navigate]);
 
   useEffect(() => {
     if (!isAdmin) return;
