@@ -1,7 +1,8 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { useToast } from './ToastContext';
+import { clearAuthReturnTo } from '../utils/authReturnTo';
 
 interface AuthContextType {
   user: User | null;
@@ -28,7 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMessage, setAuthMessage] = useState('');
-  const [pendingAction, setPendingActionState] = useState<(() => void) | null>(null);
+  const pendingActionRef = useRef<(() => void) | null>(null);
   const { showSuccess } = useToast();
 
   const checkAdminStatus = async (userId: string) => {
@@ -105,7 +106,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSession(null);
           setUser(null);
           setIsAdmin(false);
-          setPendingActionState(null);
+          pendingActionRef.current = null;
+          clearAuthReturnTo();
         } else if (event === 'SIGNED_IN') {
           setSession(session);
           setUser(session?.user ?? null);
@@ -114,9 +116,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
 
           setTimeout(() => {
-            if (pendingAction) {
-              pendingAction();
-              setPendingActionState(null);
+            if (pendingActionRef.current) {
+              pendingActionRef.current();
+              pendingActionRef.current = null;
             }
             setIsAuthModalOpen(false);
           }, 100);
@@ -216,7 +218,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
-    setPendingActionState(null);
+    pendingActionRef.current = null;
+    clearAuthReturnTo();
     showSuccess('You have been signed out successfully');
   };
 
@@ -228,11 +231,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const closeAuthModal = () => {
     setIsAuthModalOpen(false);
     setAuthMessage('');
-    setPendingActionState(null);
+    pendingActionRef.current = null;
+    clearAuthReturnTo();
   };
 
   const setPendingAction = (action: (() => void) | null) => {
-    setPendingActionState(() => action);
+    pendingActionRef.current = action;
   };
 
   const value = {

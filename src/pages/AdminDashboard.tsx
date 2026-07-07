@@ -15,9 +15,7 @@ import {
   Box,
   Tags,
   Settings,
-  BarChart3,
   Search,
-  Filter,
   Edit,
   Trash2,
   Plus,
@@ -25,7 +23,6 @@ import {
   Phone,
   MapPin,
   Calendar,
-  ChevronRight,
   Eye,
   X,
   TrendingDown,
@@ -406,18 +403,16 @@ export default function AdminDashboard() {
           .from('notifications')
           .insert({
             user_id: submissionToNotify.user_id,
-            type: action === 'approved' ? 'submission_approved' : 'submission_rejected',
-            title: action === 'approved' ? 'Product Approved!' : 'Product Rejected',
-            message: action === 'approved'
-              ? `Your product "${submissionToNotify.title}" has been approved and is now live on the marketplace.`
-              : `Your product submission "${submissionToNotify.title}" was not approved. Please review our guidelines and try again.`,
+            type: 'submission_rejected',
+            title: 'Product Rejected',
+            message: `Your product submission "${submissionToNotify.title}" was not approved. Please review our guidelines and try again.`,
             data: { submission_id: submissionId }
           });
       }
 
       setSelectedSubmission(null);
       await loadAdminData();
-      alert(`Product ${action === 'approved' ? 'approved and published' : 'rejected'} successfully!`);
+      alert('Product rejected successfully!');
     } catch (error) {
       console.error('Error processing submission:', error);
       alert('Error processing submission. Please try again.');

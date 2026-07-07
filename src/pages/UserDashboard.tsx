@@ -4,9 +4,9 @@ import {
   AlertTriangle, CheckCircle2, Clock, DollarSign, Eye, Gavel,
   Package, ShoppingBag, Tag, Timer, Truck, XCircle,
 } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import AuctionCountdown from '../components/auction/AuctionCountdown';
+import { useProtectedRoute } from '../hooks/useProtectedRoute';
 
 interface SellerStats {
   activeListings: number;
@@ -46,7 +46,7 @@ interface SellerAuction {
 }
 
 export default function UserDashboard() {
-  const { user, loading: authLoading, openAuthModal } = useAuth();
+  const { user, authLoading } = useProtectedRoute('Please sign in to view your dashboard');
   const navigate = useNavigate();
   const [stats, setStats] = useState<SellerStats>({ activeListings: 0, liveAuctions: 0, pendingReview: 0, salesRevenue: 0 });
   const [attention, setAttention] = useState<AttentionItems>({ ordersToShip: 0, auctionsAwaitingPayment: 0, rejectedSubmissions: 0 });
@@ -57,14 +57,9 @@ export default function UserDashboard() {
   useEffect(() => {
     // Don't redirect while the session is still restoring (hard refresh):
     // `user` is null until Supabase finishes loading it.
-    if (authLoading) return;
-    if (!user) {
-      openAuthModal('Please sign in to view your dashboard');
-      navigate('/');
-      return;
-    }
+    if (authLoading || !user) return;
     loadDashboardData();
-  }, [user, authLoading, navigate]);
+  }, [user, authLoading]);
 
   const loadDashboardData = async () => {
     if (!user) return;

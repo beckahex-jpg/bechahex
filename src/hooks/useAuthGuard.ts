@@ -5,7 +5,7 @@ export function useAuthGuard() {
 
   const requireAuth = (action: () => void, message?: string): boolean => {
     if (!user) {
-      setPendingAction(() => action);
+      setPendingAction(action);
       openAuthModal(message || 'Please sign in to continue');
       return false;
     }

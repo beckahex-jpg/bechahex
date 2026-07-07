@@ -3,6 +3,7 @@ import { Sparkles, Loader2, Check, Edit2, Gift, DollarSign, TrendingUp } from 'l
 import { supabase } from '../lib/supabase';
 
 interface AnalysisResult {
+  error?: string;
   productName: string;
   description: string;
   category: string;
@@ -24,21 +25,7 @@ export default function SmartProductAnalyzer({ onAnalysisComplete, onApplySugges
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [description, setDescription] = useState('');
-  const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string>('');
   const [selectedPrice, setSelectedPrice] = useState<'symbolic' | 'fair' | 'market'>('symbolic');
-
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setSelectedImage(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
 
   const analyzeProduct = async () => {
     if (!description) {
@@ -99,13 +86,11 @@ export default function SmartProductAnalyzer({ onAnalysisComplete, onApplySugges
       category: result.category,
       price: priceValue.toString(),
       submission_type: submissionType,
-      images: selectedImage ? [selectedImage] : []
+      images: []
     });
 
     setResult(null);
     setDescription('');
-    setSelectedImage(null);
-    setImagePreview('');
   };
 
   if (result) {

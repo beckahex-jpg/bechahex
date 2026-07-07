@@ -31,6 +31,16 @@ interface CartContextType {
   refreshCart: () => Promise<void>;
 }
 
+type CartQueryItem = Omit<CartItem, 'products'> & {
+  products: CartItem['products'] | CartItem['products'][] | null;
+};
+
+function normalizeCartItem(item: CartQueryItem): CartItem | null {
+  const product = Array.isArray(item.products) ? item.products[0] : item.products;
+  if (!product) return null;
+  return { ...item, products: product };
+}
+
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export function CartProvider({ children }: { children: ReactNode }) {
@@ -85,7 +95,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setItems(data || []);
+      const normalizedItems = ((data || []) as CartQueryItem[])
+        .map(normalizeCartItem)
+        .filter((item): item is CartItem => Boolean(item));
+      setItems(normalizedItems);
     } catch (error) {
       console.error('Error loading cart:', error);
     } finally {

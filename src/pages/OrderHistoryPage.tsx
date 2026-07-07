@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Package, ArrowLeft, Calendar, DollarSign, Truck, CheckCircle, Clock, XCircle, Search, ChevronDown } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { Package, ArrowLeft, DollarSign, Truck, CheckCircle, Clock, XCircle, Search, ChevronDown } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useProtectedRoute } from '../hooks/useProtectedRoute';
 
 interface Order {
   id: string;
@@ -37,7 +37,7 @@ type FilterTab = 'all' | 'pending' | 'processing' | 'completed' | 'cancelled';
 
 export default function OrderHistoryPage() {
   const { orderId } = useParams();
-  const { user, openAuthModal } = useAuth();
+  const { user, authLoading } = useProtectedRoute('Please sign in to view your orders');
   const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -47,13 +47,9 @@ export default function OrderHistoryPage() {
   const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
 
   useEffect(() => {
-    if (!user) {
-      openAuthModal('Please sign in to view your orders');
-      navigate('/');
-      return;
-    }
+    if (authLoading || !user) return;
     loadOrders();
-  }, [user, navigate]);
+  }, [user, authLoading]);
 
   useEffect(() => {
     if (orderId && orders.length > 0) {

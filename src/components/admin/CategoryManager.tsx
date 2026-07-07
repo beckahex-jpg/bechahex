@@ -18,7 +18,6 @@ interface CategoryManagerProps {
 export default function CategoryManager({ searchQuery: externalSearchQuery = '' }: CategoryManagerProps) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [searchQuery, setSearchQuery] = useState(externalSearchQuery);
-  const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [formData, setFormData] = useState({
@@ -44,7 +43,6 @@ export default function CategoryManager({ searchQuery: externalSearchQuery = '' 
 
   const loadCategories = async () => {
     try {
-      setLoading(true);
       const { data, error } = await supabase
         .from('categories')
         .select('*')
@@ -54,8 +52,6 @@ export default function CategoryManager({ searchQuery: externalSearchQuery = '' 
       setCategories(data || []);
     } catch (error) {
       console.error('Error loading categories:', error);
-    } finally {
-      setLoading(false);
     }
   };
 

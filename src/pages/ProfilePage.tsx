@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User, Mail, Phone, MapPin, Lock, Save, Eye, EyeOff, Loader2, Package, ShoppingCart, Calendar, Settings as SettingsIcon } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../lib/supabase';
 import PasswordStrengthMeter from '../components/PasswordStrengthMeter';
+import { useProtectedRoute } from '../hooks/useProtectedRoute';
 
 interface ProfileData {
   full_name: string;
@@ -24,7 +24,7 @@ interface UserStats {
 }
 
 export default function ProfilePage() {
-  const { user, loading: authLoading, openAuthModal } = useAuth();
+  const { user, authLoading } = useProtectedRoute('Please sign in to view your profile');
   const { showSuccess, showError } = useToast();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -49,20 +49,14 @@ export default function ProfilePage() {
     newPassword: '',
     confirmPassword: '',
   });
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
     // Wait for the session to restore before deciding (hard-refresh race).
-    if (authLoading) return;
-    if (!user) {
-      openAuthModal('Please sign in to view your profile');
-      navigate('/');
-      return;
-    }
+    if (authLoading || !user) return;
     loadProfile();
-  }, [user, authLoading, navigate]);
+  }, [user, authLoading]);
 
   const loadProfile = async () => {
     if (!user) return;

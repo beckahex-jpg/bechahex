@@ -1,13 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { X, Upload, Check, Sparkles, Save } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import AISmartProductUpload from '../components/AISmartProductUpload';
 import { useToast } from '../contexts/ToastContext';
 import AuctionFields from '../components/auction/AuctionFields';
 import ListingTypeSelector from '../components/auction/ListingTypeSelector';
 import { auctionValuesAreValid, createDefaultAuctionValues, type AuctionFormValues, type ListingType } from '../types/auctionForm';
+import { useProtectedRoute } from '../hooks/useProtectedRoute';
 
 interface Category {
   id: string;
@@ -45,7 +45,7 @@ const parseQuantity = (value: string) => {
 const AUTOSAVE_KEY = 'product_submission_draft';
 
 export default function SubmitProduct() {
-  const { user, loading: authLoading, openAuthModal } = useAuth();
+  const { user, authLoading } = useProtectedRoute('Please sign in to sell products');
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { showSuccess, showError, showWarning } = useToast();
@@ -102,15 +102,10 @@ export default function SubmitProduct() {
 
   useEffect(() => {
     // Wait for the session to restore before deciding (hard-refresh race).
-    if (authLoading) return;
-    if (!user) {
-      openAuthModal('Please sign in to sell products');
-      navigate('/');
-      return;
-    }
+    if (authLoading || !user) return;
     loadCategories();
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [user, authLoading, navigate]);
+  }, [user, authLoading]);
 
   useEffect(() => {
     if (formData.submission_type === 'donation') {

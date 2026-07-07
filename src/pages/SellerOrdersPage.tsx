@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import {
   CalendarDays, CheckCircle, Clock, ExternalLink, Landmark, Mail,
@@ -8,6 +7,7 @@ import {
 } from 'lucide-react';
 import OrderStatusBadge from '../components/OrderStatusBadge';
 import EmptyStateDisplay from '../components/EmptyStateDisplay';
+import { useProtectedRoute } from '../hooks/useProtectedRoute';
 
 interface Order {
   id: string;
@@ -48,7 +48,7 @@ function sellerSubtotal(order: Order): number {
 }
 
 export default function SellerOrdersPage() {
-  const { user } = useAuth();
+  const { user, authLoading } = useProtectedRoute('Please sign in to view your sales');
   const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [hasPayoutDetails, setHasPayoutDetails] = useState<boolean | null>(null);
@@ -62,10 +62,9 @@ export default function SellerOrdersPage() {
   const [filterStatus, setFilterStatus] = useState<'all' | 'to_ship' | 'shipped' | 'completed'>('all');
 
   useEffect(() => {
-    if (user) {
-      loadOrders();
-    }
-  }, [user]);
+    if (authLoading || !user) return;
+    loadOrders();
+  }, [user, authLoading]);
 
   useEffect(() => {
     if (!user) return;

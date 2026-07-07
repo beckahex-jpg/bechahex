@@ -4,8 +4,8 @@ import {
   Package, Trash2, Eye, AlertCircle, CheckCircle, Clock, XCircle,
   Search, MoreVertical, Calendar, TrendingUp, X, Plus, DollarSign, Upload, Save
 } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { useProtectedRoute } from '../hooks/useProtectedRoute';
 
 interface Product {
   id: string;
@@ -56,7 +56,7 @@ interface Category {
 }
 
 export default function MyProductsPage() {
-  const { user, loading: authLoading, openAuthModal } = useAuth();
+  const { user, authLoading } = useProtectedRoute('Please sign in to view your products');
   const navigate = useNavigate();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,15 +103,10 @@ export default function MyProductsPage() {
 
   useEffect(() => {
     // Wait for the session to restore before deciding (hard-refresh race).
-    if (authLoading) return;
-    if (!user) {
-      openAuthModal('Please sign in to view your products');
-      navigate('/');
-      return;
-    }
+    if (authLoading || !user) return;
     loadProducts();
     fetchCategories();
-  }, [user, authLoading, navigate]);
+  }, [user, authLoading]);
 
   const fetchCategories = async () => {
     try {

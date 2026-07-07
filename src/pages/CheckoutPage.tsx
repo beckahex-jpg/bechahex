@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
 import { supabase } from '../lib/supabase';
 import { Package, CreditCard, MapPin, ArrowLeft, Loader2, ShoppingCart, Plus, Minus, Trash2, CheckCircle, X } from 'lucide-react';
 import { US_STATES } from '../utils/usStates';
 import StripeCheckout from '../components/StripeCheckout';
 import CartDrawer from '../components/CartDrawer';
+import { useProtectedRoute } from '../hooks/useProtectedRoute';
 
 interface ShippingAddress {
   fullName: string;
@@ -20,7 +20,7 @@ interface ShippingAddress {
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
-  const { user, loading: authLoading, openAuthModal } = useAuth();
+  const { user, authLoading } = useProtectedRoute('Please sign in to complete your purchase');
   const { items, totalAmount, clearCart, updateQuantity, removeFromCart } = useCart();
   const [orderId, setOrderId] = useState('');
   const [loading, setLoading] = useState(false);
@@ -43,12 +43,7 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     // Wait for the session to restore before deciding (hard-refresh race).
-    if (authLoading) return;
-    if (!user) {
-      openAuthModal('Please sign in to complete your purchase');
-      navigate('/');
-      return;
-    }
+    if (authLoading || !user) return;
     // clearCart after a successful payment empties items — don't bounce the
     // buyer to the homepage while the payment modal / success screen is up.
     if (items.length === 0 && !showPaymentOptions && !paymentDone) {
@@ -102,6 +97,10 @@ export default function CheckoutPage() {
   const handleProceedToPayment = async () => {
     if (!validateForm()) return;
     if (!user) return;
+    if (orderId) {
+      setShowPaymentOptions(true);
+      return;
+    }
 
     setLoading(true);
 

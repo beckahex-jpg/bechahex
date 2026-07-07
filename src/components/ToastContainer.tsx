@@ -7,15 +7,16 @@ function ToastItem({ toast }: { toast: Toast }) {
   const [isVisible, setIsVisible] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
   const [progress, setProgress] = useState(100);
+  const duration = toast.duration ?? 0;
 
   useEffect(() => {
     setTimeout(() => setIsVisible(true), 10);
 
-    if (toast.duration && toast.duration > 0) {
+    if (duration > 0) {
       const startTime = Date.now();
       const interval = setInterval(() => {
         const elapsed = Date.now() - startTime;
-        const remaining = Math.max(0, 100 - (elapsed / toast.duration) * 100);
+        const remaining = Math.max(0, 100 - (elapsed / duration) * 100);
         setProgress(remaining);
 
         if (remaining <= 0) {
@@ -25,7 +26,7 @@ function ToastItem({ toast }: { toast: Toast }) {
 
       return () => clearInterval(interval);
     }
-  }, [toast.duration]);
+  }, [duration]);
 
   const handleClose = () => {
     setIsLeaving(true);

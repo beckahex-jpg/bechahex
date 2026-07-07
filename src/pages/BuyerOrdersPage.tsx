@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import {
   CalendarDays, CheckCircle, ChevronDown, Clock, DollarSign, ExternalLink,
@@ -9,6 +8,7 @@ import {
 import ConfirmationModal from '../components/ConfirmationModal';
 import OrderStatusBadge from '../components/OrderStatusBadge';
 import EmptyStateDisplay from '../components/EmptyStateDisplay';
+import { useProtectedRoute } from '../hooks/useProtectedRoute';
 
 interface Order {
   id: string;
@@ -39,7 +39,7 @@ interface Order {
 type OrderProduct = Order['order_items'][number]['products'];
 
 export default function BuyerOrdersPage() {
-  const { user } = useAuth();
+  const { user, authLoading } = useProtectedRoute('Please sign in to view your purchases');
   const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [reviewedKeys, setReviewedKeys] = useState<Set<string>>(new Set());
@@ -59,10 +59,9 @@ export default function BuyerOrdersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
-    if (user) {
-      loadOrders();
-    }
-  }, [user]);
+    if (authLoading || !user) return;
+    loadOrders();
+  }, [user, authLoading]);
 
   useEffect(() => {
     applyFilters();

@@ -95,10 +95,17 @@ export default function AuthModal() {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-start justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-md w-full p-8 relative my-8">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-[80] flex items-start justify-center p-4 overflow-y-auto">
+      <div
+        className="bg-white rounded-2xl max-w-md w-full p-8 relative my-8"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="auth-modal-title"
+      >
         <button
+          type="button"
           onClick={closeAuthModal}
+          aria-label="Close sign in dialog"
           className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
         >
           <X className="w-6 h-6" />
@@ -111,7 +118,7 @@ export default function AuthModal() {
           </div>
         )}
 
-        <h2 className="text-3xl font-bold text-gray-900 mb-2">
+        <h2 id="auth-modal-title" className="text-3xl font-bold text-gray-900 mb-2">
           {isLogin ? 'Sign In' : 'Create Account'}
         </h2>
         <p className="text-gray-600 mb-6">
@@ -210,6 +217,7 @@ export default function AuthModal() {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors focus:outline-none"
                 disabled={loading}
               >

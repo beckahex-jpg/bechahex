@@ -11,13 +11,13 @@ export default function CookiePreferencesModal() {
   }, [preferences]);
 
   useEffect(() => {
-    if (showPreferencesModal) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
+    if (!showPreferencesModal) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
     return () => {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = previousOverflow;
     };
   }, [showPreferencesModal]);
 
@@ -75,25 +75,32 @@ export default function CookiePreferencesModal() {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-black bg-opacity-50 backdrop-blur-sm"
         onClick={closePreferencesModal}
       />
 
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+      <div
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cookie-preferences-title"
+      >
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-gradient-to-br from-blue-50 to-cyan-50 rounded-lg">
               <Cookie className="w-6 h-6 text-blue-600" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">Cookie Preferences</h2>
+              <h2 id="cookie-preferences-title" className="text-2xl font-bold text-gray-900">Cookie Preferences</h2>
               <p className="text-sm text-gray-600">Manage your cookie settings</p>
             </div>
           </div>
           <button
+            type="button"
             onClick={closePreferencesModal}
+            aria-label="Close cookie preferences"
             className="p-2 hover:bg-gray-100 rounded-lg transition"
           >
             <X className="w-6 h-6 text-gray-600" />

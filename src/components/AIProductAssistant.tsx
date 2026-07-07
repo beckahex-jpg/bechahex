@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { MessageCircle, Send, X, Sparkles, Loader2 } from 'lucide-react';
+import { Send, X, Sparkles, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { useAuth } from '../contexts/AuthContext';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -14,7 +13,6 @@ interface AIProductAssistantProps {
 }
 
 export default function AIProductAssistant({ onProductDataUpdate, currentProductData }: AIProductAssistantProps) {
-  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');

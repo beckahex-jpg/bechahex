@@ -18,12 +18,12 @@ export default function CookieConsentBanner() {
 
   return (
     <div
-      className={`fixed bottom-0 left-0 right-0 z-50 transition-transform duration-500 ${
+      className={`fixed bottom-0 left-0 right-0 z-[55] transition-transform duration-500 ${
         isVisible ? 'translate-y-0' : 'translate-y-full'
       }`}
     >
       <div className="border-t border-gray-200 bg-white shadow-[0_-12px_40px_rgba(0,0,0,0.12)]">
-        <div className="market-container py-4 sm:py-5">
+        <div className="market-container py-3 sm:py-5">
           <div className="flex max-h-[70vh] flex-col gap-4 overflow-y-auto lg:max-h-none lg:flex-row lg:items-center lg:gap-6 lg:overflow-visible">
             <div className="flex min-w-0 flex-1 items-start gap-3 sm:gap-4">
               <div className="shrink-0 rounded-xl bg-emerald-50 p-2.5 sm:p-3">
@@ -35,7 +35,7 @@ export default function CookieConsentBanner() {
                 </h3>
                 <p className="mt-1 text-xs leading-5 text-gray-600 sm:text-sm sm:leading-relaxed">
                   We use cookies to enhance your browsing experience, provide personalized content, and analyze our traffic.
-                  By clicking "Accept All", you consent to our use of cookies. You can manage your preferences at any time.
+                  <span className="hidden sm:inline"> By clicking "Accept All", you consent to our use of cookies. You can manage your preferences at any time.</span>
                 </p>
               </div>
             </div>

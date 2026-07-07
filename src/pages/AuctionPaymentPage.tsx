@@ -3,9 +3,9 @@ import { loadStripe } from '@stripe/stripe-js';
 import { AddressElement, Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
 import { ArrowLeft, Clock, Loader2, Lock, ShieldCheck, Trophy } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import type { Auction } from '../types/auction';
+import { useProtectedRoute } from '../hooks/useProtectedRoute';
 
 interface WinnerOffer {
   id: string;
@@ -94,7 +94,7 @@ function HoldPaymentForm({ paymentId, onDone }: { paymentId: string; onDone: (or
 
 export default function AuctionPaymentPage() {
   const { offerId } = useParams();
-  const { user, loading: authLoading, openAuthModal } = useAuth();
+  const { user, authLoading } = useProtectedRoute('Please sign in to pay for your winning auction', '/my-auctions');
   const navigate = useNavigate();
   const [offer, setOffer] = useState<WinnerOffer | null>(null);
   const [loading, setLoading] = useState(true);
@@ -106,12 +106,7 @@ export default function AuctionPaymentPage() {
 
   useEffect(() => {
     // Wait for the session to restore before deciding (hard-refresh race).
-    if (authLoading) return;
-    if (!user) {
-      openAuthModal('Please sign in to pay for your winning auction');
-      navigate('/my-auctions');
-      return;
-    }
+    if (authLoading || !user) return;
     supabase
       .from('auction_winner_offers')
       .select('id, amount, status, expires_at, auctions(*)')
@@ -123,7 +118,7 @@ export default function AuctionPaymentPage() {
         else setOffer(data as unknown as WinnerOffer | null);
         setLoading(false);
       });
-  }, [navigate, offerId, openAuthModal, user, authLoading]);
+  }, [offerId, user, authLoading]);
 
   const expired = offer ? new Date(offer.expires_at).getTime() <= Date.now() : false;
   const payable = Boolean(offer && !expired && ['offered', 'payment_started'].includes(offer.status));

@@ -1,5 +1,5 @@
 import { Gavel, Heart, Loader2, ShoppingCart } from 'lucide-react';
-import { useState } from 'react';
+import { type KeyboardEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
@@ -65,6 +65,14 @@ export default function ProductCard({
 
   const openProduct = () => navigate(`/product/${id}`);
 
+  const handleCardKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.target !== event.currentTarget) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openProduct();
+    }
+  };
+
   const toggleFavorite = () => {
     protectedAction(async () => {
       if (favorited) await removeFromFavorites(id);
@@ -92,7 +100,11 @@ export default function ProductCard({
   return (
     <article
       onClick={openProduct}
-      className={`group relative cursor-pointer overflow-hidden bg-white transition duration-200 ${isShelf ? 'flex h-full flex-col rounded-xl border border-transparent hover:border-gray-200 hover:shadow-md' : `rounded-2xl border hover:border-gray-400 hover:shadow-lg ${isAuction ? 'border-emerald-300' : 'border-gray-200'} ${viewMode === 'list' ? 'sm:flex sm:min-h-56' : 'flex h-full flex-col'}`}`}
+      onKeyDown={handleCardKeyDown}
+      tabIndex={0}
+      role="link"
+      aria-label={`View ${title}`}
+      className={`group relative cursor-pointer overflow-hidden bg-white transition duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#07513B] focus-visible:ring-offset-2 ${isShelf ? 'flex h-full flex-col rounded-xl border border-transparent hover:border-gray-200 hover:shadow-md' : `rounded-2xl border hover:border-gray-400 hover:shadow-lg ${isAuction ? 'border-emerald-300' : 'border-gray-200'} ${viewMode === 'list' ? 'sm:flex sm:min-h-56' : 'flex h-full flex-col'}`}`}
     >
       <div className={`relative overflow-hidden bg-gray-100 ${isShelf ? 'aspect-square rounded-xl' : viewMode === 'list' ? 'aspect-[4/3] sm:aspect-auto sm:w-64 sm:shrink-0' : 'aspect-square'}`}>
         <img

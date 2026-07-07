@@ -1,22 +1,10 @@
-import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
 import SettingsPanel from '../components/settings/SettingsPanel';
+import { useProtectedRoute } from '../hooks/useProtectedRoute';
 
 export default function SellerSettingsPage() {
-  const { user, loading: authLoading, openAuthModal } = useAuth();
-  const navigate = useNavigate();
+  const { user, authLoading } = useProtectedRoute('Please sign in to view settings');
 
-  useEffect(() => {
-    // Wait for the session to restore before deciding (hard-refresh race).
-    if (authLoading) return;
-    if (!user) {
-      openAuthModal('Please sign in to view settings');
-      navigate('/');
-    }
-  }, [user, authLoading, navigate]);
-
-  if (!user) return null;
+  if (authLoading || !user) return null;
 
   return (
     <main className="min-h-screen bg-white pb-24 lg:pb-12">

@@ -3,6 +3,7 @@ import { ArrowLeft, Check, ChevronRight, Gift, Heart, Loader2, Minus, PackageChe
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../contexts/CartContext';
 import { useFavorites } from '../contexts/FavoritesContext';
+import { useAuthGuard } from '../hooks/useAuthGuard';
 import AuctionProductGallery from './auction/AuctionProductGallery';
 import ProductReviewsSection from './reviews/ProductReviewsSection';
 import { StarRating } from './reviews/StarRating';
@@ -31,6 +32,7 @@ export default function FixedPriceDetailPage({ product }: { product: FixedPriceP
   const navigate = useNavigate();
   const { addToCart } = useCart();
   const { addToFavorites, removeFromFavorites, isFavorite } = useFavorites();
+  const { protectedAction } = useAuthGuard();
   const [activeTab, setActiveTab] = useState<ProductTab>('about');
   const [showFullDescription, setShowFullDescription] = useState(false);
   const [quantity, setQuantity] = useState(1);
@@ -47,6 +49,7 @@ export default function FixedPriceDetailPage({ product }: { product: FixedPriceP
     ? typeof product.original_price === 'string' ? Number(product.original_price) : product.original_price
     : null;
   const discount = originalPrice && originalPrice > price ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0;
+  const showCompareAtPrice = Boolean(originalPrice && originalPrice > price && !isDonated);
   const images = useMemo(() => Array.from(new Set([
     ...(product.images || []),
     product.image_url,
@@ -62,7 +65,7 @@ export default function FixedPriceDetailPage({ product }: { product: FixedPriceP
     { id: 'shipping', label: 'Shipping' },
   ];
 
-  const handleCartAction = async (buyNow: boolean) => {
+  const performCartAction = async (buyNow: boolean) => {
     if (isUnavailable) return;
     try {
       setActiveAction(buyNow ? 'buy' : 'cart');
@@ -81,8 +84,15 @@ export default function FixedPriceDetailPage({ product }: { product: FixedPriceP
   };
 
   const handleFavorite = () => {
-    if (favorited) removeFromFavorites(product.id);
-    else addToFavorites(product.id);
+    protectedAction(() => {
+      void (favorited ? removeFromFavorites(product.id) : addToFavorites(product.id));
+    }, 'Please sign in to add items to your watchlist');
+  };
+
+  const handleCartAction = (buyNow: boolean) => {
+    protectedAction(() => {
+      void performCartAction(buyNow);
+    }, buyNow ? 'Please sign in to buy this item' : 'Please sign in to add items to your cart');
   };
 
   const handleShare = async () => {
@@ -181,7 +191,7 @@ export default function FixedPriceDetailPage({ product }: { product: FixedPriceP
             <div className="space-y-4 p-4">
               <div>
                 <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Price</p>
-                <div className="mt-1 flex flex-wrap items-end gap-3"><p className="text-3xl font-black tracking-tight text-gray-900">${price.toFixed(2)}</p>{originalPrice && !isDonated && <p className="pb-1 text-base font-semibold text-gray-400 line-through">${originalPrice.toFixed(2)}</p>}</div>
+                <div className="mt-1 flex flex-wrap items-end gap-3"><p className="text-3xl font-black tracking-tight text-gray-900">${price.toFixed(2)}</p>{showCompareAtPrice && <p className="pb-1 text-base font-semibold text-gray-400 line-through">${originalPrice!.toFixed(2)}</p>}</div>
               </div>
 
               <div className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-semibold ${isUnavailable ? 'bg-yellow-50 text-yellow-800' : 'bg-green-50 text-green-800'}`}>

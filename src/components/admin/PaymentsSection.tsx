@@ -10,13 +10,10 @@ import {
   Calendar,
   TrendingUp,
   Search,
-  Filter,
   CreditCard,
   Truck,
   AlertCircle,
   X,
-  Download,
-  Users,
   BarChart3
 } from 'lucide-react';
 
@@ -507,7 +504,7 @@ export default function PaymentsSection() {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredOrders.map((order) => {
-                const { commission, sellerAmount } = calculateAmounts(order.total_amount);
+                const { sellerAmount } = calculateAmounts(order.total_amount);
 
                 return (
                   <tr key={order.id} className="hover:bg-gray-50">

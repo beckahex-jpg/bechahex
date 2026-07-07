@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Ban, CheckCircle, Clock, Gavel, Loader2, Plus, Trophy, XCircle } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import AuctionCard from '../components/auction/AuctionCard';
-import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import type { Auction } from '../types/auction';
+import { useProtectedRoute } from '../hooks/useProtectedRoute';
 
 interface BidWithAuction {
   amount: number;
@@ -22,7 +22,7 @@ interface WinnerOfferWithAuction {
 }
 
 export default function MyAuctionsPage() {
-  const { user, loading: authLoading, openAuthModal } = useAuth();
+  const { user, authLoading } = useProtectedRoute('Please sign in to view your auctions', '/products');
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [selling, setSelling] = useState<Auction[]>([]);
@@ -60,14 +60,9 @@ export default function MyAuctionsPage() {
 
   useEffect(() => {
     // Wait for the session to restore before deciding (hard-refresh race).
-    if (authLoading) return;
-    if (!user) {
-      openAuthModal('Please sign in to view your auctions');
-      navigate('/products');
-      return;
-    }
+    if (authLoading || !user) return;
     load();
-  }, [load, navigate, openAuthModal, user, authLoading]);
+  }, [load, user, authLoading]);
 
   const uniqueBidAuctions = useMemo(() => {
     const seen = new Set<string>();

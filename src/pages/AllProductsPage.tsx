@@ -171,6 +171,18 @@ export default function AllProductsPage() {
   const visibleProducts = filteredProducts.slice(0, visibleCount);
   const activeFilterCount = selectedCategories.length + selectedConditions.length + Number(listingFilter !== 'all') + Number(Boolean(minPrice)) + Number(Boolean(maxPrice));
   const categoryMap = useMemo(() => new Map(categories.map((category) => [category.id, category.name])), [categories]);
+  const isAuctionView = listingFilter === 'auction';
+  const auctionEmptyHasOnlyListingFilter = isAuctionView && !searchQuery && activeFilterCount <= 1;
+  const catalogTitle = searchQuery
+    ? `Results for "${searchQuery}"`
+    : isAuctionView
+      ? 'Live auctions'
+      : listingFilter === 'fixed_price'
+        ? 'Buy it now'
+        : 'Explore the marketplace';
+  const resultNoun = isAuctionView
+    ? filteredProducts.length === 1 ? 'auction' : 'auctions'
+    : filteredProducts.length === 1 ? 'item' : 'items';
 
   const submitSearch = (event: FormEvent) => {
     event.preventDefault();
@@ -215,7 +227,7 @@ export default function AllProductsPage() {
           <button type="button" aria-label="Close filters" onClick={() => setShowMobileFilters(false)} className="absolute inset-0 bg-black/50" />
            <aside className="scrollbar-hide absolute inset-x-0 bottom-0 max-h-[92vh] overflow-y-auto rounded-t-3xl bg-white shadow-2xl">
              <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-5 py-4">
-               <div><h2 className="text-lg font-black">Filters</h2><p className="text-xs text-gray-500">{filteredProducts.length} items</p></div>
+                <div><h2 className="text-lg font-black">Filters</h2><p className="text-xs text-gray-500">{filteredProducts.length} {resultNoun}</p></div>
                <div className="flex items-center gap-2">
                  {activeFilterCount > 0 && <button type="button" onClick={clearFilters} className="px-2 py-2 text-sm font-bold text-[#07513B]">Clear</button>}
                  <button type="button" onClick={() => setShowMobileFilters(false)} aria-label="Close filters" className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100"><X className="h-5 w-5" /></button>
@@ -223,7 +235,7 @@ export default function AllProductsPage() {
             </div>
             <div className="p-5"><FilterPanel {...filterPanelProps} /></div>
             <div className="sticky bottom-0 border-t border-gray-200 bg-white p-4">
-              <button type="button" onClick={() => setShowMobileFilters(false)} className="w-full rounded-full bg-[#07513B] py-3 text-sm font-bold text-white">Show {filteredProducts.length} items</button>
+              <button type="button" onClick={() => setShowMobileFilters(false)} className="w-full rounded-full bg-[#07513B] py-3 text-sm font-bold text-white">Show {filteredProducts.length} {resultNoun}</button>
             </div>
           </aside>
         </div>
@@ -238,8 +250,8 @@ export default function AllProductsPage() {
 
         <div className="mb-6 flex flex-col gap-4 border-b border-gray-200 pb-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h1 className="text-balance text-3xl font-black tracking-tight text-gray-950 sm:text-4xl">{searchQuery ? `Results for “${searchQuery}”` : 'Explore the marketplace'}</h1>
-            <p className="mt-2 text-sm text-gray-500">{filteredProducts.length} {filteredProducts.length === 1 ? 'item' : 'items'} found</p>
+            <h1 className="text-balance text-3xl font-black tracking-tight text-gray-950 sm:text-4xl">{catalogTitle}</h1>
+            <p className="mt-2 text-sm text-gray-500">{filteredProducts.length} {resultNoun} found</p>
           </div>
           <form onSubmit={submitSearch} className="flex w-full max-w-xl" role="search">
             <div className="relative min-w-0 flex-1">
@@ -295,9 +307,22 @@ export default function AllProductsPage() {
             ) : visibleProducts.length === 0 ? (
               <div className="rounded-2xl border border-gray-200 bg-gray-50 p-10 text-center sm:p-16">
                 <PackageSearch className="mx-auto h-12 w-12 text-gray-300" />
-                <h2 className="mt-4 text-xl font-black text-gray-900">No exact matches</h2>
-                <p className="mt-2 text-sm text-gray-500">Try fewer filters or a different search term.</p>
-                <button type="button" onClick={clearEverything} className="mt-5 rounded-full bg-gray-900 px-6 py-3 text-sm font-bold text-white">Clear all</button>
+                <h2 className="mt-4 text-xl font-black text-gray-900">{auctionEmptyHasOnlyListingFilter ? 'No live auctions right now' : isAuctionView ? 'No matching auctions' : 'No exact matches'}</h2>
+                <p className="mx-auto mt-2 max-w-md text-sm text-gray-500">
+                  {isAuctionView
+                    ? auctionEmptyHasOnlyListingFilter
+                      ? 'Auction listings appear here after review and when their schedule starts.'
+                      : 'Try fewer filters or browse buy-it-now items while new auctions are reviewed.'
+                    : 'Try fewer filters or a different search term.'}
+                </p>
+                {isAuctionView ? (
+                  <div className="mt-5 flex flex-col items-center justify-center gap-2 sm:flex-row">
+                    <button type="button" onClick={() => navigate('/products?listing=fixed_price')} className="rounded-full bg-gray-900 px-6 py-3 text-sm font-bold text-white">Browse buy it now</button>
+                    <button type="button" onClick={() => navigate('/submit-product?listing=auction')} className="rounded-full border border-gray-900 bg-white px-6 py-3 text-sm font-bold text-gray-900">Create auction</button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={clearEverything} className="mt-5 rounded-full bg-gray-900 px-6 py-3 text-sm font-bold text-white">Clear all</button>
+                )}
               </div>
             ) : (
               <>

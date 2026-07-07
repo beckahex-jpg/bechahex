@@ -5,6 +5,7 @@ import { useFavorites } from '../contexts/FavoritesContext';
 import { useCart } from '../contexts/CartContext';
 import { supabase } from '../lib/supabase';
 import type { Auction } from '../types/auction';
+import { useProtectedRoute } from '../hooks/useProtectedRoute';
 
 interface Product {
   id: string;
@@ -21,14 +22,16 @@ interface Product {
 
 export default function FavoritesPage() {
   const navigate = useNavigate();
+  const { user, authLoading } = useProtectedRoute('Please sign in to view your watchlist');
   const { favorites, removeFromFavorites } = useFavorites();
   const { addToCart } = useCart();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (authLoading || !user) return;
     loadFavoriteProducts();
-  }, [favorites]);
+  }, [favorites, user, authLoading]);
 
   const loadFavoriteProducts = async () => {
     if (favorites.length === 0) {

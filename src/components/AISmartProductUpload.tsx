@@ -359,7 +359,7 @@ export default function AISmartProductUpload({ categories, onComplete, onClose }
 
       const matchedCategory = categories.find(cat => {
         const categoryName = cat.name.toLowerCase();
-        return analysis.suggestedCategories.some(suggested => {
+        return analysis.suggestedCategories.some((suggested: string) => {
           const suggestedLower = suggested.toLowerCase();
           return (
             categoryName === suggestedLower ||

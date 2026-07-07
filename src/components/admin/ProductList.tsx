@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Search, Edit2, Trash2, Package, Eye, Upload, X, MoreVertical, User, Mail, Phone, MapPin, DollarSign, Save, Calendar } from 'lucide-react';
+import { Edit2, Trash2, Package, Eye, Upload, X, MoreVertical, User, Mail, Phone, MapPin, DollarSign, Save, Calendar } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { useNavigate } from 'react-router-dom';
 
 interface Product {
   id: string;
@@ -40,7 +39,6 @@ interface ProductListProps {
 }
 
 export default function ProductList({ searchQuery = '' }: ProductListProps) {
-  const navigate = useNavigate();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -163,7 +161,7 @@ export default function ProductList({ searchQuery = '' }: ProductListProps) {
     const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
     const filePath = `products/${fileName}`;
 
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from('product-images')
       .upload(filePath, file, {
         cacheControl: '3600',

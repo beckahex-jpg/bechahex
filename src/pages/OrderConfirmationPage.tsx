@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { CheckCircle, Package, MapPin, CreditCard, Loader2, Home } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 interface Order {
   id: string;
